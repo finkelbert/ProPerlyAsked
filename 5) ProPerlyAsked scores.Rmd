@@ -1,0 +1,87 @@
+# ProPer scores (V): allocate ProPer values to manually segmented intervals, for data aggregation and stats
+
+```{r clean_start}
+rm(list = ls())
+
+## Load required libraries 
+require(dplyr)
+require(zoo)
+
+comp_df <- read.csv("data_tables/comp_df.csv") %>% distinct(file, t, .keep_all = TRUE)
+
+## interpolate observations from the TextGrid manual annotations
+if(length(comp_df$syll_mid) > 0) comp_df <- mutate(
+  group_by(comp_df, file),
+  syll_mid = na.locf(syll_mid, na.rm=F)
+  )
+# 
+if(length(comp_df$word_label) > 0) comp_df <- mutate(
+  group_by(comp_df, file),
+  word_mid = na.locf(syll_mid, na.rm=F)
+  )
+
+```
+
+# Prepare the scores_df table
+
+```{r prepare_scores_df, warning=FALSE}
+
+## check up on correct allocations: check how many CoMs within manually segmented intervals and choose the one associated with highest mass if there are multiple CoMs
+scores_df <- mutate(
+  ## calcualte the following for each syllabic interval (manual)
+  group_by(comp_df, file, syll_mid),
+  ## find the CoMs associated with each syllabic interval
+  syllCoMMap = ifelse( (all(is.na(CoMatCoM)) | is.na(syll_mid)) , NA,
+                            ifelse( length(which(!is.na(CoMatCoM))) == 1, mean(CoMatCoM, na.rm = T),
+                                    # use '0' when there are multiple CoMs
+                                    ifelse( length(which(!is.na(CoMatCoM))) > 1, 0 ))),
+  # choose the stonger mass_rel if there are multiple CoMs
+  syllCoMMap2 = ifelse(syllCoMMap==0 & CoMatCoM==t, mass_rel, NA),
+  syllCoMMap2 = max(syllCoMMap2, na.rm = T),
+  syllCoMMap = ifelse(syllCoMMap==0 & CoMatCoM==t, syllCoMMap2, syllCoMMap),
+  syllCoMMap = ifelse(syllCoMMap==0, NA, syllCoMMap),
+  ## convert mass_rel to corresponding CoM
+  syllCoMflicts = ifelse( (length(which(!is.na(CoMatCoM))) > 1 & syllCoMMap != mass_rel) , NA, CoM ),
+  ## strectch the relevant CoM values within syllabic intervals
+  syllCoMMap = ifelse( length(which(!is.na(CoMatCoM))) > 1, mean(syllCoMflicts, na.rm = T), syllCoMMap ),
+  ### the following ProPer parameters: use the values associated with the relevant CoM
+  intervalDuration = ifelse( syllCoMMap == t, intervalDuration, NA),
+  intervalDuration = ifelse( all(is.na(intervalDuration)), NA, max(intervalDuration, na.rm = T) ),
+  CoM = ifelse( syllCoMMap == t, CoM, NA),
+  CoM = ifelse( all(is.na(CoM)), NA, max(CoM, na.rm = T) ),
+  CoG = ifelse( syllCoMMap == t, CoG, NA),
+  CoG = ifelse( all(is.na(CoG)), NA, max(CoG, na.rm = T) ),
+  f0atCoM = ifelse( syllCoMMap == t, f0atCoM, NA),
+  f0atCoM = ifelse( all(is.na(f0atCoM)), NA, max(f0atCoM, na.rm = T) ),
+  DeltaF0 = ifelse( syllCoMMap == t, DeltaF0, NA),
+  DeltaF0 = max(DeltaF0, na.rm = T),
+  # DeltaF0 = ifelse( all(is.na(DeltaF0)), NA, max(DeltaF0, na.rm = T) ),
+  DeltaF0_rel = ifelse( syllCoMMap == t, DeltaF0_rel, NA),
+  DeltaF0_rel = ifelse( all(is.na(DeltaF0_rel)), NA, max(DeltaF0_rel, na.rm = T) ),
+  synchrony = ifelse( syllCoMMap == t, synchrony, NA),
+  synchrony = ifelse( all(is.na(synchrony)), NA, max(synchrony, na.rm = T) ),
+  sync_rel = ifelse( syllCoMMap == t, sync_rel, NA),
+  sync_rel = ifelse( all(is.na(sync_rel)), NA, max(sync_rel, na.rm = T) ),
+  mass_rel = ifelse( syllCoMMap == t, mass_rel, NA),
+  mass_rel = ifelse( all(is.na(mass_rel)), NA, max(mass_rel, na.rm = T) )
+  )
+
+## reduce rows
+# scores_df <- dplyr::filter(scores_df, syll_mid==t)
+scores_df <- dplyr::filter(scores_df, syllCoMMap == t)
+
+## reduce columns
+mini_scores_df <- droplevels(subset(scores_df, select = -c(t, syll_start, syll_mid, syll_end, syll_bounds, word_start, word_mid, word_end, word_bounds, perFloorStatus, relToStatus,  strengThreshStatus, f0_data_min, f0_data_max, f0_data_range, smogPP_20Hz, smogPP_12Hz, smogPP_8Hz, smogPP_5Hz, f0_interp_stretch_smooth, f0_interp_smooth, f0_realFloorStretch, syll_boundsSeq, useManualStatus, autoManStatus, averageSyllStatus, auto_bounds, auto_boundsSeq, f0atCoG, PERatCoM, PERatCoG, CoM_corr, CoG_corr, CoMatCoM, syllCoMMap, syllCoMMap2, syllCoMflicts)))
+
+# nano_scores_df <- droplevels(subset(mini_scores_df, select = -c(f0_speaker_min, f0_speaker_max, f0_speaker_median, f0_speaker_mean, f0_speaker_range, f0_token_min, f0_token_max, f0_token_median, f0_token_mean, f0_token_range, CoM, CoG, intervalDuration_rel, DeltaF0Label, syncLabel, localSpeechRate)))
+
+```
+
+# Write scores_df table
+
+```{r write_scores_df}
+## Write the scores data file
+write.csv(mini_scores_df, "data_tables/scores_df.csv", row.names=FALSE)
+# write.csv(nano_scores_df, "data_tables/tiny_scores_df.csv", row.names=FALSE)
+
+```
