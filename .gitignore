@@ -1,8 +1,10 @@
 # data tables
 *.csv
+*.xlsx
 
 # beta workflows and local backups
 gitNo/
+fromConstantijn/
 
 # GitHub page
 *.yml
