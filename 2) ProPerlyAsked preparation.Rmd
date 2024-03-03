@@ -1,6 +1,6 @@
 # ProPer preparation (II): Praat-to-R
 
-Collect data from Praat objects into an R dataframe.
+Collect data from different objects into an R dataframe.
 
 ```{r clean_start, warning=FALSE}
 rm(list = ls())
@@ -8,35 +8,148 @@ rm(list = ls())
 ## Load required libraries 
 require(rPraat)
 require(tidyverse)
-
+require(zoo)
+require(readxl)
 ```
 
-# Harvest acoustic data
+Get the timing skeleton
 
-```{r pre_prepare_raw_df, warning=FALSE}
-##########--- Read and collect Praat data into R tables ---########## 
+```{r fullTime}
 
-##### Paths
 files_intensity <- list.files(path="praat_data/intensity_tiers/", pattern="*.IntensityTier",full.names=T)
-##
-files_pitchTier <- list.files(path="praat_data/pitch_tiers/", pattern="*.PitchTier",full.names=T)
-##
-files_pitchObject <- list.files(path="praat_data/pitch_objects/", pattern="*.Pitch",full.names=T)
-##
-files_textGrid <- list.files(path="praat_data/textgrids/", pattern="*.TextGrid",full.names=T)
-
 ##### Full-time 
 # (get the full time table of each audio file based on its intensity tier)
 fullTime_df <- plyr::ldply(files_intensity, function(f){  
   filename <- str_match(f,".*/([^/.]*)\\.[^/]*$")
   file <- filename[,2] 
-  filenameBits <- str_match(f,".*/([^/._]*)_([^/._]*)\\.[^/]*$")
-  speaker <- filenameBits[,2]
-  variable <- filenameBits[,3]
+  # filenameBits <- str_match(f,".*/([^/._]*)_([^/._]*)\\.[^/]*$")
+  # speaker <- filenameBits[,2]
+  # variable <- filenameBits[,3]
   it <- it.read(f)
   time <- seq(it[["tmin"]], it[["tmax"]], 0.001) * 1000
-  data.frame(file, t=as.integer(as.character(time)), speaker, variable)
+  data.frame(file, t=as.integer(as.character(time)))#, speaker, variable)
 })
+
+files <- fullTime_df$file
+files <- files[!duplicated(files)==TRUE]
+
+```
+
+# Read TextGrids: 'syll' tier
+
+```{r pre_prepare_TextGrids_Syllable, warning=FALSE}
+
+##### TextGrid
+# TextGrids are optional! They are useful for exposition and to improve the automatic detection. By default, TextGrids are expected with at least one interval tier demarcating syllabic boundaries
+#
+files_textGrid <- list.files(path="praat_data/textgrids/", pattern="*.TextGrid",full.names=T)
+# The following chunk takes syllabic intervals and labels from the "Syllable" tier
+textGridSyll_df <- plyr::ldply(files_textGrid, function(f){
+  filename <- str_match(f,".*/([^/.]*)\\.[^/]*$")
+  file <- filename[,2]
+  tg <- tg.read(f, encoding = "auto")
+  syll_tier <- data.frame(tg$syll)
+  t1 <- ifelse(syll_tier$label=="", NA, round(syll_tier$t1,3)*1000)
+  t2 <- ifelse(syll_tier$label=="", NA, round(syll_tier$t2,3)*1000)
+  t_mid <- round((t1+t2)/2)
+  syll_label <- syll_tier$label
+  data.frame(file, t=as.integer(as.character(t1)), syll_start=as.integer(as.character(t1)), syll_mid=as.integer(as.character(t_mid)), syll_end=as.integer(as.character(t2)), syll_bounds=as.integer(as.character(t1)), syll_label)
+})
+textGridSyll_df <- mutate(
+  group_by(textGridSyll_df,file),
+  syll_bounds = ifelse(
+    (is.na(syll_bounds) & !is.na(lag(syll_end,1))),
+    lag(syll_end,1), 
+    syll_bounds),
+  t = syll_bounds
+  )
+#
+textGridSyll_df <- dplyr::filter(textGridSyll_df, !is.na(t))
+
+textGridSyll_df <- dplyr::filter(textGridSyll_df, syll_bounds!=0)
+
+textGridSyll_df <- mutate(
+  group_by(textGridSyll_df, file),
+  syll_start = ifelse(syll_label=="" | syll_label==" ", NA, syll_start),
+  syll_mid = ifelse(syll_label=="" | syll_label==" ", NA, syll_mid),
+  syll_end = ifelse(syll_label=="" | syll_label==" ", NA, syll_end)
+  )
+  
+fullTimed_df <- left_join(fullTime_df, textGridSyll_df, by = c("file", "t"))
+
+fullTimed_df <- mutate(
+  group_by(fullTimed_df, file),
+  stay = ifelse(t < min(syll_start, na.rm = T) | t > max(syll_end, na.rm = T), "GO", "stay")
+  )
+
+fixTimed_df <- dplyr::filter(fullTimed_df, stay=="stay")
+fixTimed_df <- droplevels(subset(fixTimed_df, select = -stay))
+
+fixTimed_df <- mutate(
+  group_by(fixTimed_df, file),
+  syll_start = na.locf(syll_start, na.rm = F),
+  syll_mid = na.locf(syll_mid, na.rm = F),
+  syll_end = na.locf(syll_end, na.rm = F),
+  syll_bounds = na.locf(syll_bounds, na.rm = F),
+  syll_label = na.locf(syll_label, na.rm = F)
+  )
+
+```
+
+add F0 from the CC tool
+
+```{r F0_constant}
+F0_Constant_df <- read.csv("fromConstantijn/data_long.csv")
+
+F0_Constant_df <- mutate(
+  group_by(F0_Constant_df, filename),
+  t = round((start + step)*1000),
+  f0_CC = round(f0, 2)
+  )
+
+F0_Constant_df <- droplevels(subset(F0_Constant_df, select = -c(start, end, step, stepnumber, f0, jumpkilleffect)))
+
+colnames(F0_Constant_df) <- c("file","interval_label","t","f0_CC")
+
+#####
+
+fullTimeF0_df <- left_join(fullTime_df, F0_Constant_df, by = c("file", "t"))
+
+fullTimeF0_df <- mutate(
+  group_by(fullTimeF0_df, file),
+  ##  f0_smooth_stretch ('f0_smootch')
+  f0_CCsmootch = ifelse(
+    (is.na(f0_CC) & t<min(which(!is.na(f0_CC)))),
+    f0_CC[min(which(!is.na(f0_CC)))], ifelse(
+      (is.na(f0_CC) & t>=max(which(!is.na(f0_CC)))),
+      f0_CC[max(which(!is.na(f0_CC)))], f0_CC)),
+    f0_CCsmootchInterp = round(na.approx(f0_CCsmootch))
+  )
+
+fullTimeF0_df <- droplevels(subset(fullTimeF0_df, select = -f0_CCsmootch))
+
+fixTimedF0_df <- left_join(fixTimed_df, fullTimeF0_df, by = c("file", "t"))
+
+#####
+
+# fixTimedF0_df <- left_join(fixTimed_df, F0_Constant_df, by = c("file", "t"))
+
+
+# fixTimedF0_df <- mutate(
+#   group_by(fixTimedF0_df, file),
+#   f0_CCinterp = round(na.spline(f0_CC))#,
+#   # f0_CCinterp = ifelse(f0_CCinterp < min(f0_CC, na.rm=T), NA, f0_CCinterp)
+#   )
+
+#####
+
+
+```
+
+add intensityTiers, PitchTiers and pitchObjects
+
+```{r pre_prepare_raw_df, warning=FALSE}
+##########--- Read and collect Praat data into R tables ---########## 
 
 ##### Intensity 
 # (get intensity data)
@@ -48,18 +161,23 @@ intensity_df <- plyr::ldply(files_intensity, function(f){
   data.frame(file, t=as.integer(as.character(time)), intensity = round(intensitier$i,4))
 })
 
-##### F0: Pitch Tier 
+##### F0: Pitch Tier
+##
+files_pitchTier <- list.files(path="praat_data/pitch_tiers/", pattern="*.PitchTier",full.names=T)
 # (get the smooth F0 curve)
-f0_smooth_df <- plyr::ldply(files_pitchTier, function(f){  
+f0_smooth_df <- plyr::ldply(files_pitchTier, function(f){
   filename <- str_match(f,".*/([^/.]*)\\.[^/]*$")
-  file <- filename[,2] 
+  file <- filename[,2]
   pt <- pt.read(f)
   time = round(pt[["t"]],3)*1000
   f0 = pt[["f"]]
-  data.frame(file, t=as.integer(as.character(time)), f0_smooth=round(f0,2)) 
+  data.frame(file, t=as.integer(as.character(time)), f0_smooth=round(f0,2))
 })
 
 ##### Pitch object  
+##
+files_pitchObject <- list.files(path="praat_data/pitch_objects/", pattern="*.Pitch",full.names=T)
+##
 # (get the Strength, i.e. the *similarity index* or *periodic fraction* from Praat's autocorrelation. Also, get the raw pre-smoothing F0)
 # (Note: this may take longer to process!!!)
 pitchObject_df <- plyr::ldply(files_pitchObject, function(f){  
@@ -69,8 +187,8 @@ pitchObject_df <- plyr::ldply(files_pitchObject, function(f){
   time <- round(pitch_object$t,3)*1000
   pitch_ceiling <- 1000 #fixed to periods up to 1000Hz
   ###### row1 = Praat's path finder choice for F0 candidates 
-  f0_row1 <- apply(pitch.toArray(pitch_object)[["frequencyArray"]], 2, function(x) x[1])
-  f0_row1[which(f0_row1==0)] <- NA
+  # f0_row1 <- apply(pitch.toArray(pitch_object)[["frequencyArray"]], 2, function(x) x[1])
+  # f0_row1[which(f0_row1==0)] <- NA
   strengthArray <- apply(as.data.frame(pitch.toArray(pitch_object)[["strengthArray"]]), 2, function(x) ifelse(x==0,NA,x))
   freqArray <- apply(as.data.frame(pitch.toArray(pitch_object)[["frequencyArray"]]), 2, function(x) ifelse(x==0,NA,x))
   zero_one_freqs <- apply(freqArray, 2, function(x) ifelse(x>pitch_ceiling, 0, 1))
@@ -79,83 +197,118 @@ pitchObject_df <- plyr::ldply(files_pitchObject, function(f){
   ###### rowmax = highest strength value within the frequency range (up to 'pitch_ceiling')
   strength_rowmax <- apply(strength_limited, 2, max, na.rm=T)
   strength_rowmax[is.infinite(strength_rowmax)] <- 0
-  data.frame(file, t=as.integer(as.character(time)), f0_raw=round(f0_row1,2), periodicStrength=round(strength_rowmax,7))
+  data.frame(file, t=as.integer(as.character(time)), periodicStrength=round(strength_rowmax,7))
   # data.frame(file, t=as.integer(as.character(time)), f0_row1=round(f0_row1,2), strength_rowmax=round(strength_rowmax,7))
 })
 ```
 
-# Read TextGrids: 'Syllable' tier
+add data from the big harvesting table
 
-```{r pre_prepare_TextGrids_Syllable, warning=FALSE}
+```{r F0_constant}
+####
+# rm(list = c("bigTable","midTable","smallTable"))
 
-##### TextGrid
-# TextGrids are optional! They are useful for exposition and to improve the automatic detection. By default, TextGrids are expected with at least one interval tier demarcating syllabic boundaries
-#
-files_textGrid <- list.files(path="praat_data/textgrids/", pattern="*.TextGrid",full.names=T)
-# The following chunk takes syllabic intervals and labels from the "Syllable" tier
-if(length(files_textGrid)>0) textGridSyll_df <- plyr::ldply(files_textGrid, function(f){
-  filename <- str_match(f,".*/([^/.]*)\\.[^/]*$")
-  file <- filename[,2]
-  tg <- tg.read(f, encoding = "auto")
-  syll_tier <- data.frame(tg$Syllable)
-  t1 <- ifelse(syll_tier$label=="", NA, round(syll_tier$t1,3)*1000)
-  t2 <- ifelse(syll_tier$label=="", NA, round(syll_tier$t2,3)*1000)
-  t_mid <- round((t1+t2)/2)
-  syll_label <- syll_tier$label
-  data.frame(file, t=as.integer(as.character(t1)), syll_start=as.integer(as.character(t1)), syll_mid=as.integer(as.character(t_mid)), syll_end=as.integer(as.character(t2)), syll_bounds=as.integer(as.character(t1)), syll_label)
-})
-if(exists("textGridSyll_df")) textGridSyll_df <- mutate(
-  group_by(textGridSyll_df,file),
-  syll_bounds = ifelse(
-    (is.na(syll_bounds) & !is.na(lag(syll_end,1))),
-    lag(syll_end,1), 
-    syll_bounds),
-  t = syll_bounds
+bigTable <- read_xlsx("data_tables/Edited_harvest2.xlsx")
+
+bigTable <- mutate(
+  group_by(bigTable),
+  file = paste0("cut-",video)
   )
-#
-if(exists("textGridSyll_df")) textGridSyll_df <- dplyr::filter(textGridSyll_df, !is.na(t))
 
+midTable <- droplevels(subset(bigTable, select = -c(...1, i, start, end, prelink, textlink, video, link, command, getImgCommand, thumbnail, X, href, text, startT, endT, ...18)))
+
+colnames(midTable) <- c("startApprox","Validity","Auxiliary","Comment","Speaker_sex_age_name_role","Actual_Time","file")
+
+
+midTable <- mutate(
+  group_by(midTable, file),
+  phraseTime = ifelse(!is.na(Actual_Time), Actual_Time, as.character(startApprox)),
+  phraseTime = as.integer(ifelse(phraseTime=="10 & 15", "10", phraseTime))
+  )
+
+midTable <- droplevels(subset(midTable, select =  -c(startApprox, Actual_Time)))
+
+smallTable <- dplyr::filter(midTable, Validity=="yes")
+
+smallTable <- mutate(
+  group_by(smallTable),
+  sex  = str_split_i(Speaker_sex_age_name_role, ", *",1),
+  age  = str_split_i(Speaker_sex_age_name_role, ", *",2),
+  speaker = str_split_i(Speaker_sex_age_name_role, ", *",3),
+  role = str_split_i(Speaker_sex_age_name_role, ", *",4)
+  ## age = str_match(Speaker_sex_age_name_role, "[:digit:]{2}")[,1]#,
+  )
+
+smallTable <- mutate(
+  group_by(smallTable, file),
+  speaker = ifelse(age=="30. Allie Beth Stuckey", "Allie Beth Stuckey", speaker),
+  speaker = ifelse(speaker=="X" | speaker=="XXXX01", NA, speaker),
+  age = ifelse(age=="30. Allie Beth Stuckey", "30", age),
+  age = ifelse(age=="X", NA, age),
+  sex = ifelse(sex=="m ", "m", sex),
+  role = ifelse(role=="X", NA, role),
+  )
+
+smallTable$sex <- as.factor(smallTable$sex)
+smallTable$age <- as.integer(smallTable$age)
+smallTable$speaker <- as.factor(smallTable$speaker)
+smallTable$role <- as.factor(smallTable$role)
+
+smallTable <- droplevels(subset(smallTable, select = -Speaker_sex_age_name_role))
+
+########
+
+# > levels(as.factor(smallTable$sex))
+# [1] "f" "m"
+# > levels(as.factor(smallTable$age))
+# [1] "10" "20" "30" "40" "50" "60" "70" "80"
+# > levels(as.factor(smallTable$speaker))
+#  [1] "Aaron Jon Hyland"          "Ahgha ?"                   "Allie Beth Stuckey"        "Ammon Bundy"              
+#  [5] "Andrea Tantaros"           "Andy Levy"                 "Ann Lazarus"               "Bill O’Reilly"            
+#  [9] "Bob Beckel"                "Chris Hayes"               "Chris Hwang"               "Chris Matthews"           
+# [13] "Cyndi Tiedt"               "Darryl Honda"              "Dennis ?"                  "Don Lemon"                
+# [17] "Donald Trump"              "Donny Deutsch"             "Dr. Phil"                  "Dylan Ratigan"            
+# [21] "Ellen DeGeneres"           "Emily Lambert"             "Eric Bolling"              "Erin Burnett"             
+# [25] "Francesca Vietor"          "Glenn Beck"                "Greg Gutfeld"              "Griff Jenkins"            
+# [29] "Harris Kimberley Faulkner" "Harvey Weinstein"          "Henry Winkler"             "Hillary Hahn"             
+# [33] "Hoda Kotb"                 "Hugh Hewitt"               "Jeff Ruby"                 "Jimmy Fallon"             
+# [37] "Jimmy Kimmel"              "Joe Concha"                "Joe Scarborough"           "John Castellani"          
+# [41] "Jon Meacham"               "Jon Stewart"               "Juan Williams"             "Juliet Schor"             
+# [45] "Ken Langone"               "Kevin O’Leary"             "Larry Hanael"              "Larry Kudlow"             
+# [49] "Laura Ingraham"            "Lauren Duca"               "Laurie David"              "Leland Vittert (?)"       
+# [53] "Linda Sanchez"             "Liz Claman"                "Mark Levin"                "Michael Garcia"           
+# [57] "Mike Cox"                  "Norman Yee"                "Paula Poundstone"          "Petra DeJesus"            
+# [61] "Phil Angelides"            "Piers Morgan"              "Rich Hillis"               "Rick Swig"                
+# [65] "Ricky Gervais"             "Ryan Seacrest"             "Sally Kohn"                "Scott Turow"              
+# [69] "Sean Hannity"              "Seth Meyers"               "Stacey Abrams"             "Stephen Colbert"          
+# [73] "Stephen Dubner"            "Steve Adubato"             "Stevie Nelson (?)"         "Tara Setmayer"            
+# [77] "Tim Kaine"                 "Tom Cochran"               "Trevor Noah"               "Walter Kamau Bell"        
+# > levels(as.factor(smallTable$role))
+#  [1] "activist"          "actor"             "anchor"            "audience"          "author"            "caller"           
+#  [7] "CEO"               "chairman"          "CNN moderator"     "commisioner"       "commissioner"      "Commissioner"     
+# [13] "contestant"        "environment agent" "expert"            "film producer"     "football player"   "FOX moderator"    
+# [19] "guest"             "historian"         "host"              "journalist"        "moderator"         "politician"       
+# [25] "Randy Quaids wife" "reporter"          "school director"   "show host"         "violinist"        
+# > 
 ```
 
-# Read TextGrids: 'Word' tier
 
-```{r pre_prepare_TextGrids_Word, warning=FALSE}
 
-# The following chunk takes word intervals and labels from the "Word" tier (for exposition purposes)
-if(length(files_textGrid)>0) textGridWord_df <- plyr::ldply(files_textGrid, function(f){
-  filename <- str_match(f,".*/([^/.]*)\\.[^/]*$")
-  file <- filename[,2]
-  tg <- tg.read(f, encoding = "auto")
-  word_tier <- data.frame(tg$Word)
-  word_t1 <- ifelse(word_tier$label=="", NA, round(word_tier$t1,3)*1000)
-  word_t2 <- ifelse(word_tier$label=="", NA, round(word_tier$t2,3)*1000)
-  word_t_mid <- round((word_t1+word_t2)/2)
-  word_label <- word_tier$label
-  data.frame(file, t=as.integer(as.character(word_t1)), word_start=as.integer(as.character(word_t1)), word_mid=as.integer(as.character(word_t_mid)), word_end=as.integer(as.character(word_t2)), word_bounds=as.integer(as.character(word_t1)), word_label)
-})
-if(exists("textGridWord_df")) textGridWord_df <- mutate(
-  group_by(textGridWord_df,file),
-  word_bounds = ifelse(
-    (is.na(word_bounds) & !is.na(lag(word_end,1))),
-    lag(word_end,1), 
-    word_bounds),
-  t = word_bounds
-  )
-#
-if(exists("textGridWord_df")) textGridWord_df <- dplyr::filter(textGridWord_df, !is.na(t))
-  
-```
 
 # Combine data into raw_df
 
 ```{r prepare_raw_df, warning=FALSE}
 
 ##### Combine all data
-raw_df <- left_join(fullTime_df, f0_smooth_df, by = c("file", "t"))
+raw_df <- left_join(fixTimedF0_df, f0_smooth_df, by = c("file", "t"))
 raw_df <- left_join(raw_df, intensity_df, by = c("file", "t"))
 raw_df <- left_join(raw_df, pitchObject_df, by = c("file", "t"))
-if(exists("textGridSyll_df")) raw_df <- left_join(raw_df, textGridSyll_df, by = c("file", "t"))
-if(exists("textGridWord_df")) raw_df <- left_join(raw_df, textGridWord_df, by = c("file", "t"))
+raw_df <- left_join(raw_df, smallTable, by = "file")
+
+raw_df <- mutate(
+  group_by(raw_df, file),
+  syll_label = ifelse(Auxiliary=="could", "could", ifelse(Auxiliary=="may", "may", syll_label))
+  )
 
 ```
 
@@ -163,5 +316,7 @@ if(exists("textGridWord_df")) raw_df <- left_join(raw_df, textGridWord_df, by = 
 
 ```{r write_raw_df, warning=FALSE}
 ##### Write the raw data
+
 write.csv(raw_df, "data_tables/raw_df.csv", row.names=FALSE)
+
 ```
