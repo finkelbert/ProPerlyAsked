@@ -10,6 +10,8 @@ require(rPraat)
 require(tidyverse)
 require(zoo)
 require(readxl)
+require(seewave)
+
 ```
 
 Get the timing skeleton
@@ -96,10 +98,10 @@ fixTimed_df <- mutate(
 
 ```
 
-add F0 from the CC tool
+# Add F0 from the CC tool
 
 ```{r F0_constant}
-F0_Constant_df <- read.csv("fromConstantijn/data_long.csv")
+F0_Constant_df <- read.csv("data_tables/data_long_F0_CC.csv")
 
 F0_Constant_df <- mutate(
   group_by(F0_Constant_df, filename),
@@ -107,33 +109,36 @@ F0_Constant_df <- mutate(
   f0_CC = round(f0, 2)
   )
 
-F0_Constant_df <- droplevels(subset(F0_Constant_df, select = -c(start, end, step, stepnumber, f0, jumpkilleffect)))
+F0_Constant_df <- droplevels(subset(F0_Constant_df, select = -c(start, end, step, stepnumber, f0, jumpkilleffect, err)))
 
 colnames(F0_Constant_df) <- c("file","interval_label","t","f0_CC")
 
 #####
 
-fullTimeF0_df <- left_join(fullTime_df, F0_Constant_df, by = c("file", "t"))
+fullTimeF0_CC_df <- left_join(fullTime_df, F0_Constant_df, by = c("file", "t"))
 
-fullTimeF0_df <- mutate(
-  group_by(fullTimeF0_df, file),
+fullTimeF0_CC_df <- mutate(
+  group_by(fullTimeF0_CC_df, file),
   ##  f0_smooth_stretch ('f0_smootch')
   f0_CCsmootch = ifelse(
-    (is.na(f0_CC) & t<min(which(!is.na(f0_CC)))),
+    (is.na(f0_CC) & t<min(t[which(!is.na(f0_CC))])),
     f0_CC[min(which(!is.na(f0_CC)))], ifelse(
-      (is.na(f0_CC) & t>=max(which(!is.na(f0_CC)))),
+      (is.na(f0_CC) & t>=max(t[which(!is.na(f0_CC))])),
       f0_CC[max(which(!is.na(f0_CC)))], f0_CC)),
-    f0_CCsmootchInterp = round(na.approx(f0_CCsmootch))
+  ##  f0_smooth_stretch_interp ('f0_smootchInterp')
+    f0_CCsmootchInterpLin = round(na.approx(f0_CCsmootch)),
+    f0_CCsmootchInterpSplin = round(na.spline(f0_CCsmootch))
+  ##  f0 post smooth_stretch_interp_smooth ('f0Post')
+  # f0_CCPost = round(bwfilter(wave = f0_CCsmootchInterp, f = 1000, to = 12, n = 1, output = "Sample"), 2)
   )
 
-fullTimeF0_df <- droplevels(subset(fullTimeF0_df, select = -f0_CCsmootch))
+fullTimeF0_CC_df <- droplevels(subset(fullTimeF0_CC_df, select = -f0_CCsmootch))
 
-fixTimedF0_df <- left_join(fixTimed_df, fullTimeF0_df, by = c("file", "t"))
+fixTimedF0_df <- left_join(fixTimed_df, fullTimeF0_CC_df, by = c("file", "t"))
 
 #####
 
 # fixTimedF0_df <- left_join(fixTimed_df, F0_Constant_df, by = c("file", "t"))
-
 
 # fixTimedF0_df <- mutate(
 #   group_by(fixTimedF0_df, file),
@@ -143,10 +148,9 @@ fixTimedF0_df <- left_join(fixTimed_df, fullTimeF0_df, by = c("file", "t"))
 
 #####
 
-
 ```
 
-add intensityTiers, PitchTiers and pitchObjects
+# Add intensityTiers, PitchTiers and pitchObjects
 
 ```{r pre_prepare_raw_df, warning=FALSE}
 ##########--- Read and collect Praat data into R tables ---########## 
@@ -173,6 +177,29 @@ f0_smooth_df <- plyr::ldply(files_pitchTier, function(f){
   f0 = pt[["f"]]
   data.frame(file, t=as.integer(as.character(time)), f0_smooth=round(f0,2))
 })
+
+
+fullTimeF0_df <- left_join(fullTime_df, f0_smooth_df, by = c("file", "t"))
+
+fullTimeF0_df <- mutate(
+  group_by(fullTimeF0_df, file),
+  ##  f0_smooth_stretch ('f0_smootch')
+  f0_smootch = ifelse(
+    (is.na(f0_smooth) & t<min(t[which(!is.na(f0_smooth))])),
+    f0_smooth[min(which(!is.na(f0_smooth)))], ifelse(
+      (is.na(f0_smooth) & t>=max(t[which(!is.na(f0_smooth))])),
+      f0_smooth[max(which(!is.na(f0_smooth)))], f0_smooth)),
+  ##  f0_smooth_stretch_interp ('f0_smootchInterp')
+  f0_smootchInterpLin = na.approx(f0_smootch, na.rm=F),
+  f0_smootchInterpSplin = na.spline(f0_smootch, na.rm=F),
+  ##  f0 post smooth_stretch_interp_smooth ('f0Post')
+  # f0Post = round(bwfilter(wave = f0_smootchInterp, f = 1000, to = 12, n = 1, output = "Sample"), 2)
+  )
+
+fullTimeF0_df <- droplevels(subset(fullTimeF0_df, select = -f0_smootch))
+
+fixTimedF0_df <- left_join(fixTimedF0_df, fullTimeF0_df, by = c("file", "t"))
+
 
 ##### Pitch object  
 ##
@@ -202,13 +229,13 @@ pitchObject_df <- plyr::ldply(files_pitchObject, function(f){
 })
 ```
 
-add data from the big harvesting table
+# Add data from the big harvesting table
 
 ```{r F0_constant}
 ####
 # rm(list = c("bigTable","midTable","smallTable"))
 
-bigTable <- read_xlsx("data_tables/Edited_harvest2.xlsx")
+bigTable <- read_xlsx("data_tables/Edited_harvest.xlsx")
 
 bigTable <- mutate(
   group_by(bigTable),
@@ -258,11 +285,11 @@ smallTable <- droplevels(subset(smallTable, select = -Speaker_sex_age_name_role)
 
 ########
 
-# > levels(as.factor(smallTable$sex))
+# > levels(smallTable$sex)
 # [1] "f" "m"
 # > levels(as.factor(smallTable$age))
 # [1] "10" "20" "30" "40" "50" "60" "70" "80"
-# > levels(as.factor(smallTable$speaker))
+# > levels(smallTable$speaker)
 #  [1] "Aaron Jon Hyland"          "Ahgha ?"                   "Allie Beth Stuckey"        "Ammon Bundy"              
 #  [5] "Andrea Tantaros"           "Andy Levy"                 "Ann Lazarus"               "Bill O’Reilly"            
 #  [9] "Bob Beckel"                "Chris Hayes"               "Chris Hwang"               "Chris Matthews"           
@@ -283,25 +310,23 @@ smallTable <- droplevels(subset(smallTable, select = -Speaker_sex_age_name_role)
 # [69] "Sean Hannity"              "Seth Meyers"               "Stacey Abrams"             "Stephen Colbert"          
 # [73] "Stephen Dubner"            "Steve Adubato"             "Stevie Nelson (?)"         "Tara Setmayer"            
 # [77] "Tim Kaine"                 "Tom Cochran"               "Trevor Noah"               "Walter Kamau Bell"        
-# > levels(as.factor(smallTable$role))
+# > levels(smallTable$role)
 #  [1] "activist"          "actor"             "anchor"            "audience"          "author"            "caller"           
 #  [7] "CEO"               "chairman"          "CNN moderator"     "commisioner"       "commissioner"      "Commissioner"     
 # [13] "contestant"        "environment agent" "expert"            "film producer"     "football player"   "FOX moderator"    
 # [19] "guest"             "historian"         "host"              "journalist"        "moderator"         "politician"       
 # [25] "Randy Quaids wife" "reporter"          "school director"   "show host"         "violinist"        
-# > 
+#
 ```
-
-
-
 
 # Combine data into raw_df
 
 ```{r prepare_raw_df, warning=FALSE}
 
 ##### Combine all data
-raw_df <- left_join(fixTimedF0_df, f0_smooth_df, by = c("file", "t"))
-raw_df <- left_join(raw_df, intensity_df, by = c("file", "t"))
+# raw_df <- left_join(fixTimedF0_df, f0_smooth_df, by = c("file", "t"))
+raw_df <- left_join(fixTimedF0_df, intensity_df, by = c("file", "t"))
+# raw_df <- left_join(raw_df, intensity_df, by = c("file", "t"))
 raw_df <- left_join(raw_df, pitchObject_df, by = c("file", "t"))
 raw_df <- left_join(raw_df, smallTable, by = "file")
 

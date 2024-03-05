@@ -51,7 +51,7 @@ perFloor <- .01 # {.001 -- .05}; fitting values should be likely found between 0
 # Preferably choose "speaker" "[2]" if applicable:
 relTo <- c("data", "speaker", "token")[3] # {[1] -- [3]}; change the number in [squared brackets].
 #
-sourceF0 <- c("Praat","CC")[2]
+sourceF0 <- c("Praat","CC")[1]
 
 ```
 
@@ -63,19 +63,22 @@ sourceF0 <- c("Praat","CC")[2]
 main_df <- mutate(
   group_by(main_df, file),
   ##  f0_smooth_stretch ('f0_smootch')
-  f0_smootch = ifelse(
-    (is.na(f0_smooth) & t<min(which(!is.na(f0_smooth)))),
-    f0_smooth[min(which(!is.na(f0_smooth)))], ifelse(
-      (is.na(f0_smooth) & t>=max(which(!is.na(f0_smooth)))),
-      f0_smooth[max(which(!is.na(f0_smooth)))], f0_smooth)),
+  # f0_smootch = ifelse(
+  #   (is.na(f0_smooth) & t<min(t[which(!is.na(f0_smooth))])),
+  #   f0_smooth[min(which(!is.na(f0_smooth)))], ifelse(
+  #     (is.na(f0_smooth) & t>=max(t[which(!is.na(f0_smooth))])),
+  #     f0_smooth[max(which(!is.na(f0_smooth)))], f0_smooth)),
   ##  f0_smooth_stretch_interp ('f0_smootchInterp')
-  f0_smootchInterp = na.approx(f0_smootch, na.rm=F),
+  # f0_smootchInterp = na.approx(f0_smootch, na.rm=F),
 
   ##  f0 post smooth_stretch_interp_smooth ('f0Post')
-    f0_CCPost = round(bwfilter(wave = f0_CCsmootchInterp, f = 1000, to = 12, n = 1, output = "Sample"), 2),
-    f0Post = round(bwfilter(wave = f0_smootchInterp, f = 1000, to = 12, n = 1, output = "Sample"), 2),
+    # f0_CCPost = round(bwfilter(wave = f0_CCsmootchInterp, f = 1000, to = 12, n = 1, output = "Sample")),
+    f0_CCPost = f0_CCsmootchInterpSplin,
+    # f0_CCPost = round(f0_CCsmootchInterpLin,2),
+    # f0Post = round(bwfilter(wave = f0_smootchInterp, f = 1000, to = 12, n = 1, output = "Sample")),
+    f0Post = f0_smootchInterpSplin,
+    # f0Post = round(f0_smootchInterpLin,2),
   
-  f0Post = round(bwfilter(wave = f0_smootchInterp, f = 1000, to = 12, n = 1, output = "Sample"), 2),
   #  f0 post without outer stretches ('f0Post_dropStretch')
   f0Post_dropStretch = ifelse(
   is.na(na.approx(f0_smooth, na.rm=F)), NA, f0Post),
@@ -95,11 +98,7 @@ main_df <- mutate(
   
   f0_data_min = ifelse(sourceF0=="Praat", round(min(f0Post_dropInterp, na.rm=T)), round(min(f0_CC, na.rm=T))),
   f0_data_max = ifelse(sourceF0=="Praat", round(max(f0Post_dropInterp, na.rm=T)), round(max(f0_CC, na.rm=T))),
-  # f0_data_min = round(min(f0_CC, na.rm=T)),
-  # f0_data_max = round(max(f0_CC, na.rm=T)),
-  # f0_data_min = round(min(f0Post_dropInterp, na.rm=T)),
-  # f0_data_max = round(max(f0Post_dropInterp, na.rm=T)),
-  
+
   f0_data_range = round(f0_data_max - f0_data_min)
   )
 ## find values for each token 
@@ -112,15 +111,7 @@ main_df <- mutate(
   f0_token_max = ifelse(sourceF0=="Praat", round(max(f0Post_dropInterp, na.rm=T)), round(max(f0_CC, na.rm=T))),
   f0_token_median = ifelse(sourceF0=="Praat", round(median(f0Post_dropInterp, na.rm = T)), round(median(f0_CC, na.rm = T))),
   f0_token_mean = ifelse(sourceF0=="Praat", round(mean(f0Post_dropInterp, na.rm = T)), round(mean(f0_CC, na.rm = T))),
-  # f0_token_min = round(min(f0_CC, na.rm=T)),
-  # f0_token_max = round(max(f0_CC, na.rm=T)),
-  # f0_token_median = round(median(f0_CC, na.rm = T)),
-  # f0_token_mean = round(mean(f0_CC, na.rm = T)),
-  # f0_token_min = round(min(f0Post_dropInterp, na.rm=T)),
-  # f0_token_max = round(max(f0Post_dropInterp, na.rm=T)),
-  # f0_token_median = round(median(f0Post_dropInterp, na.rm = T)),
-  # f0_token_mean = round(mean(f0Post_dropInterp, na.rm = T)),
-  
+
   f0_token_range = round(f0_token_max - f0_token_min)
   )
 ## find values for speaker-defined sets (if exist)
@@ -130,20 +121,12 @@ if(length(main_df$speaker)>0) main_df <- mutate(group_by(main_df, speaker),
   
   f0_speaker_min = ifelse(sourceF0=="Praat", round(min(f0Post_dropInterp, na.rm=T)), round(min(f0_CC, na.rm=T))),
   f0_speaker_max = ifelse(sourceF0=="Praat", round(max(f0Post_dropInterp, na.rm=T)), round(max(f0_CC, na.rm=T))),
-  # f0_speaker_min = round(min(f0_CC, na.rm=T)),
-  # f0_speaker_max = round(max(f0_CC, na.rm=T)),
-  # f0_speaker_min = round(min(f0Post_dropInterp, na.rm=T)),
-  # f0_speaker_max = round(max(f0Post_dropInterp, na.rm=T)),
 
   f0_speaker_min_median = round(median(f0_token_min, na.rm=T)),
   f0_speaker_max_median = round(median(f0_token_max, na.rm=T)),
   
   f0_speaker_median = ifelse(sourceF0=="Praat", round(median(f0Post_dropInterp, na.rm = T)), round(median(f0_CC, na.rm = T))),
   f0_speaker_mean = ifelse(sourceF0=="Praat", round(mean(f0Post_dropInterp, na.rm = T)), round(mean(f0_CC, na.rm = T))),
-  # f0_speaker_median = round(median(f0_CC, na.rm = T)),
-  # f0_speaker_mean = round(mean(f0_CC, na.rm = T)),
-  # f0_speaker_median = round(median(f0Post_dropInterp, na.rm = T)),
-  # f0_speaker_mean = round(mean(f0Post_dropInterp, na.rm = T)),
 
   f0_speaker_range = round(f0_speaker_max - f0_speaker_min),
   f0_speaker_range_median = round(f0_speaker_max_median - f0_speaker_min_median)
@@ -153,7 +136,7 @@ main_df <- mutate(
   group_by(main_df, file),
   ## variables for plot normalization
   plotFloorToken = round(f0_token_min - f0_token_range),
-  # plotFloorSpeaker = round(f0_speaker_min - f0_speaker_range),
+  plotFloorSpeaker = round(f0_speaker_min - f0_speaker_range),
   plotFloorData = round(f0_data_min - f0_data_range),
   ## conclude relative anchors and thresholds
   perFloor_indeed = ifelse(
@@ -438,7 +421,7 @@ ggsave(periogram_single2,file=paste0("plots/",sel_file2,"_PERIOGRAM(",single_tok
 ```{r minimize_main_df}
 
 ## get rid of some variables
-mini_main_df <- droplevels(subset(main_df, select = -c(variable, intensity, f0_raw, periodicStrength, totalPower, periodicPower, max_data_per_power, max_data_strength, max_speaker_per_power, max_speaker_strength, max_token_per_power, max_token_strength, perFloor_indeed, periodicFraction, postPP, logPP, f0_smootch, f0_smootchInterp)))
+mini_main_df <- droplevels(subset(main_df, select = -c(intensity, periodicStrength, totalPower, periodicPower, max_data_per_power, max_data_strength, max_speaker_per_power, max_speaker_strength, max_token_per_power, max_token_strength, perFloor_indeed, periodicFraction, postPP, logPP)))
 
 ```
 
