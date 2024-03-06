@@ -24,9 +24,6 @@ files_intensity <- list.files(path="praat_data/intensity_tiers/", pattern="*.Int
 fullTime_df <- plyr::ldply(files_intensity, function(f){  
   filename <- str_match(f,".*/([^/.]*)\\.[^/]*$")
   file <- filename[,2] 
-  # filenameBits <- str_match(f,".*/([^/._]*)_([^/._]*)\\.[^/]*$")
-  # speaker <- filenameBits[,2]
-  # variable <- filenameBits[,3]
   it <- it.read(f)
   time <- seq(it[["tmin"]], it[["tmax"]], 0.001) * 1000
   data.frame(file, t=as.integer(as.character(time)))#, speaker, variable)
@@ -100,7 +97,7 @@ fixTimed_df <- mutate(
 
 # Add F0 from the CC tool
 
-```{r F0_constant}
+```{r F0_CC}
 F0_Constant_df <- read.csv("data_tables/data_long_F0_CC.csv")
 
 F0_Constant_df <- mutate(
@@ -121,38 +118,27 @@ fullTimeF0_CC_df <- mutate(
   group_by(fullTimeF0_CC_df, file),
   ##  f0_smooth_stretch ('f0_smootch')
   f0_CCsmootch = ifelse(
-    (is.na(f0_CC) & t<min(t[which(!is.na(f0_CC))])),
+    (is.na(f0_CC) & t < min(t[which(!is.na(f0_CC))])),
     f0_CC[min(which(!is.na(f0_CC)))], ifelse(
-      (is.na(f0_CC) & t>=max(t[which(!is.na(f0_CC))])),
+      (is.na(f0_CC) & t >= max(t[which(!is.na(f0_CC))])),
       f0_CC[max(which(!is.na(f0_CC)))], f0_CC)),
   ##  f0_smooth_stretch_interp ('f0_smootchInterp')
-    f0_CCsmootchInterpLin = round(na.approx(f0_CCsmootch)),
-    f0_CCsmootchInterpSplin = round(na.spline(f0_CCsmootch))
+    f0_CCsmootchInterpLin = round(na.approx(f0_CCsmootch),2),
+    f0_CCsmootchInterpSplin = round(na.spline(f0_CCsmootch),2),
   ##  f0 post smooth_stretch_interp_smooth ('f0Post')
-  # f0_CCPost = round(bwfilter(wave = f0_CCsmootchInterp, f = 1000, to = 12, n = 1, output = "Sample"), 2)
+  # f0_CCPost = round(bwfilter(wave = f0_CCsmootchInterpLin, f = 1000, to = 12, n = 1, output = "Sample"), 2)
   )
 
-fullTimeF0_CC_df <- droplevels(subset(fullTimeF0_CC_df, select = -f0_CCsmootch))
+# fullTimeF0_CC_df <- droplevels(subset(fullTimeF0_CC_df, select = -f0_CCsmootch))
 
 fixTimedF0_df <- left_join(fixTimed_df, fullTimeF0_CC_df, by = c("file", "t"))
 
-#####
-
-# fixTimedF0_df <- left_join(fixTimed_df, F0_Constant_df, by = c("file", "t"))
-
-# fixTimedF0_df <- mutate(
-#   group_by(fixTimedF0_df, file),
-#   f0_CCinterp = round(na.spline(f0_CC))#,
-#   # f0_CCinterp = ifelse(f0_CCinterp < min(f0_CC, na.rm=T), NA, f0_CCinterp)
-#   )
-
-#####
 
 ```
 
 # Add intensityTiers, PitchTiers and pitchObjects
 
-```{r pre_prepare_raw_df, warning=FALSE}
+```{r tiers_data, warning=FALSE}
 ##########--- Read and collect Praat data into R tables ---########## 
 
 ##### Intensity 
@@ -178,60 +164,89 @@ f0_smooth_df <- plyr::ldply(files_pitchTier, function(f){
   data.frame(file, t=as.integer(as.character(time)), f0_smooth=round(f0,2))
 })
 
-
 fullTimeF0_df <- left_join(fullTime_df, f0_smooth_df, by = c("file", "t"))
+```
 
-fullTimeF0_df <- mutate(
-  group_by(fullTimeF0_df, file),
-  ##  f0_smooth_stretch ('f0_smootch')
-  f0_smootch = ifelse(
-    (is.na(f0_smooth) & t<min(t[which(!is.na(f0_smooth))])),
-    f0_smooth[min(which(!is.na(f0_smooth)))], ifelse(
-      (is.na(f0_smooth) & t>=max(t[which(!is.na(f0_smooth))])),
-      f0_smooth[max(which(!is.na(f0_smooth)))], f0_smooth)),
-  ##  f0_smooth_stretch_interp ('f0_smootchInterp')
-  f0_smootchInterpLin = na.approx(f0_smootch, na.rm=F),
-  f0_smootchInterpSplin = na.spline(f0_smootch, na.rm=F),
-  ##  f0 post smooth_stretch_interp_smooth ('f0Post')
-  # f0Post = round(bwfilter(wave = f0_smootchInterp, f = 1000, to = 12, n = 1, output = "Sample"), 2)
-  )
-
-fullTimeF0_df <- droplevels(subset(fullTimeF0_df, select = -f0_smootch))
+new:
+```{r tiers_data2}
 
 fixTimedF0_df <- left_join(fixTimedF0_df, fullTimeF0_df, by = c("file", "t"))
 
+fixTimedF0_df <- mutate(
+  group_by(fixTimedF0_df, file),
+  ##  f0_smooth_stretch ('f0_smootch')
+  f0_smootch = ifelse(
+    (is.na(f0_smooth) & t < min(t[which(!is.na(f0_smooth))])),
+    f0_smooth[min(which(!is.na(f0_smooth)))], ifelse(
+      (is.na(f0_smooth) & t >= max(t[which(!is.na(f0_smooth))])),
+      f0_smooth[max(which(!is.na(f0_smooth)))], f0_smooth)),
+  ##  f0_smooth_stretch_interp ('f0_smootchInterp')
+  f0_smootchInterpLin = round(na.approx(f0_smootch, na.rm=F),2),
+  f0_smootchInterpSplin = round(na.spline(f0_smootch, na.rm=F),2)
+  )
+```
 
-##### Pitch object  
-##
-files_pitchObject <- list.files(path="praat_data/pitch_objects/", pattern="*.Pitch",full.names=T)
-##
-# (get the Strength, i.e. the *similarity index* or *periodic fraction* from Praat's autocorrelation. Also, get the raw pre-smoothing F0)
-# (Note: this may take longer to process!!!)
-pitchObject_df <- plyr::ldply(files_pitchObject, function(f){  
-  filename <- str_match(f,".*/([^/.]*)\\.[^/]*$")
-  file <- filename[,2] 
-  pitch_object <- pitch.read(f)
-  time <- round(pitch_object$t,3)*1000
-  pitch_ceiling <- 1000 #fixed to periods up to 1000Hz
-  ###### row1 = Praat's path finder choice for F0 candidates 
-  # f0_row1 <- apply(pitch.toArray(pitch_object)[["frequencyArray"]], 2, function(x) x[1])
-  # f0_row1[which(f0_row1==0)] <- NA
-  strengthArray <- apply(as.data.frame(pitch.toArray(pitch_object)[["strengthArray"]]), 2, function(x) ifelse(x==0,NA,x))
-  freqArray <- apply(as.data.frame(pitch.toArray(pitch_object)[["frequencyArray"]]), 2, function(x) ifelse(x==0,NA,x))
-  zero_one_freqs <- apply(freqArray, 2, function(x) ifelse(x>pitch_ceiling, 0, 1))
-  strength_limited <- strengthArray
-  strength_limited[, -1] <- mapply(`*`, strengthArray[, -1], zero_one_freqs[, -1])
-  ###### rowmax = highest strength value within the frequency range (up to 'pitch_ceiling')
-  strength_rowmax <- apply(strength_limited, 2, max, na.rm=T)
-  strength_rowmax[is.infinite(strength_rowmax)] <- 0
-  data.frame(file, t=as.integer(as.character(time)), periodicStrength=round(strength_rowmax,7))
-  # data.frame(file, t=as.integer(as.character(time)), f0_row1=round(f0_row1,2), strength_rowmax=round(strength_rowmax,7))
-})
+previously:
+```{r tiers_data2, warning=FALSE}
+
+# fullTimeF0_df <- mutate(
+#   group_by(fullTimeF0_df, file),
+#   ##  f0_smooth_stretch ('f0_smootch')
+#   f0_smootch = ifelse(
+#     (is.na(f0_smooth) & t < min(t[which(!is.na(f0_smooth))])),
+#     f0_smooth[min(which(!is.na(f0_smooth)))], ifelse(
+#       (is.na(f0_smooth) & t >= max(t[which(!is.na(f0_smooth))])),
+#       f0_smooth[max(which(!is.na(f0_smooth)))], f0_smooth)),
+#   ##  f0_smooth_stretch_interp ('f0_smootchInterp')
+#   f0_smootchInterpLin = na.approx(f0_smootch, na.rm=F),
+#   f0_smootchInterpSplin = na.spline(f0_smootch, na.rm=F)
+#   )
+# 
+# # fullTimeF0_df <- droplevels(subset(fullTimeF0_df, select = -f0_smootch))
+# 
+# fixTimedF0_df <- left_join(fixTimedF0_df, fullTimeF0_df, by = c("file", "t"))
+
+```
+
+Load file to save time:
+```{r PitchObject_load}
+
+pitchObject_df <- read.csv("data_tables/pitchObject_df.csv")
+
+```
+
+... or run the (long) process to create 'pitchObject_df'
+```{r PitchObject_run, warning=FALSE}
+
+# ##### Pitch object  
+# ##
+# files_pitchObject <- list.files(path="praat_data/pitch_objects/", pattern="*.Pitch",full.names=T)
+# ##
+# # (get the Strength, i.e. the *similarity index* or *periodic fraction* from Praat's autocorrelation. Also, get the raw pre-smoothing F0)
+# pitchObject_df <- plyr::ldply(files_pitchObject, function(f){  
+#   filename <- str_match(f,".*/([^/.]*)\\.[^/]*$")
+#   file <- filename[,2] 
+#   pitch_object <- pitch.read(f)
+#   time <- round(pitch_object$t,3)*1000
+#   pitch_ceiling <- 1000 #fixed to periods up to 1000Hz
+#   strengthArray <- apply(as.data.frame(pitch.toArray(pitch_object)[["strengthArray"]]), 2, function(x) ifelse(x==0,NA,x))
+#   freqArray <- apply(as.data.frame(pitch.toArray(pitch_object)[["frequencyArray"]]), 2, function(x) ifelse(x==0,NA,x))
+#   zero_one_freqs <- apply(freqArray, 2, function(x) ifelse(x>pitch_ceiling, 0, 1))
+#   strength_limited <- strengthArray
+#   strength_limited[, -1] <- mapply(`*`, strengthArray[, -1], zero_one_freqs[, -1])
+#   ###### rowmax = highest strength value within the frequency range (up to 'pitch_ceiling')
+#   strength_rowmax <- apply(strength_limited, 2, max, na.rm=T)
+#   strength_rowmax[is.infinite(strength_rowmax)] <- 0
+#   data.frame(file, t=as.integer(as.character(time)), periodicStrength=round(strength_rowmax,7))
+# })
+# 
+# write.csv(pitchObject_df, "data_tables/pitchObject_df.csv", row.names=FALSE)
+
 ```
 
 # Add data from the big harvesting table
 
-```{r F0_constant}
+```{r TVNA_table}
 ####
 # rm(list = c("bigTable","midTable","smallTable"))
 
@@ -326,13 +341,12 @@ smallTable <- droplevels(subset(smallTable, select = -Speaker_sex_age_name_role)
 ##### Combine all data
 # raw_df <- left_join(fixTimedF0_df, f0_smooth_df, by = c("file", "t"))
 raw_df <- left_join(fixTimedF0_df, intensity_df, by = c("file", "t"))
-# raw_df <- left_join(raw_df, intensity_df, by = c("file", "t"))
 raw_df <- left_join(raw_df, pitchObject_df, by = c("file", "t"))
 raw_df <- left_join(raw_df, smallTable, by = "file")
 
 raw_df <- mutate(
-  group_by(raw_df, file),
-  syll_label = ifelse(Auxiliary=="could", "could", ifelse(Auxiliary=="may", "may", syll_label))
+  group_by(raw_df, file, syll_label),
+  syll_label = ifelse(Auxiliary=="could" & syll_label=="can", "could", ifelse(Auxiliary=="may" & syll_label=="can", "may", syll_label))
   )
 
 ```
