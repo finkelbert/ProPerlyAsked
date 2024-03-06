@@ -191,7 +191,7 @@ comp_df_comb <- plyr::ldply(files, function(f){
 comp_df <- comp_df_comb
 #
 # delete temporary single_token files
-unlink("data_tables/single_tokens/*.csv")
+# unlink("data_tables/single_tokens/*.csv")
 #
 ## add boundaries at manual 'syll_bounds' if there are no close automatic 'auto_bounds'
 if(useManual==TRUE) comp_df <- mutate(
@@ -210,12 +210,23 @@ if(useManual==TRUE) comp_df <- mutate(
   auto_boundsSeq = ifelse(is.na(auto_boundsSeq), 0, auto_boundsSeq)
   )
 #
+
+comp_df <- mutate(
+  group_by(comp_df, file),
+  auto_bounds = ifelse(t==auto_bounds, auto_bounds, NA)
+  )
+
 ## re-create the boundaries list
 boundetected <- which(!is.na(comp_df$auto_bounds))
 
 ## get the filemames list 
 files <- comp_df$file
 files <- files[!duplicated(files)==TRUE]
+
+
+
+# singleTest <- dplyr::filter(droplevels(comp_df), file=="cut-WPVI_20170802_220000_Action_News_6PM")
+
 
 ```
 
@@ -430,8 +441,8 @@ comp_df <- mutate(
   DeltaF0 = ifelse(
     !is.na(mass), na.locf(DeltaF0, na.rm=F), NA),
   ## normalize parameters 
-  DeltaF0_rel = round((DeltaF0 / f0_speaker_range_median) * 100, 3),
-  sync_rel = round((synchrony / intervalDuration) * 100, 3),
+  DeltaF0_rel = round((DeltaF0 / f0_speaker_range) * 100, 1),
+  sync_rel = round((synchrony / intervalDuration) * 100, 2),
   mass_rel = round(mass / (sum(smogPP_20Hz, na.rm=T) / length(levels(as.factor(CoM_corr)))), 3),
   intervalDuration_rel = ifelse(
     !is.na(intervalDuration), 
@@ -605,7 +616,7 @@ ggsave(plot_comp, file=paste0("plots/",sel_file,"_PERIOGRAM+(",yScale,").pdf"),d
 
 ```{r minimize_comp_df}
 
-mini_comp_df <- droplevels(subset(comp_df, select = -c(plotFloorToken, plotFloorSpeaker, plotFloorData, intensityRel, postPP_rel, logPP_rel, smogPP_1stDer, smogPP_2ndDer, smogPP_2ndDerDyn, CoM_seq, CoM_diff, CoM_diff_rel, CoM_diff_relInv, CoM_diff_relInterp, CoM_diff_relInterpStretch, CoM_diff_relSmoothInterp)))
+mini_comp_df <- droplevels(subset(comp_df, select = -c(plotFloorToken, plotFloorSpeaker, plotFloorData, intensityRel, strengThresh_indeed, totalPowerRel, postPP_rel, logPP_rel, smogPP_1stDer, smogPP_2ndDer, smogPP_2ndDerDyn, CoM_seq, CoM_diff, CoM_diff_rel, CoM_diff_relInv, CoM_diff_relInterp, CoM_diff_relInterpStretch, CoM_diff_relSmoothInterp)))
 
 ```
 
