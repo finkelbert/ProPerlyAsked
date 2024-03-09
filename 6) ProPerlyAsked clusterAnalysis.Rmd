@@ -1,0 +1,175 @@
+# ProPer clusterAnalysis (VI): find clusters based on sequences of ProPer metrics
+
+```{r clean_start}
+rm(list = ls())
+
+## Load required libraries 
+require(dplyr)
+require(ggplot2)
+require(data.table)
+require(scales)
+
+df <- read.csv("data_tables/nano_scores_df.csv")
+
+```
+
+# Cluster analysis procedure
+
+```{r clusterAnalysis, warning=FALSE}
+
+# remove cases without measures
+df[is.na(df$DeltaF0_rel)==F,] -> df
+df[is.na(df$sync_rel)==F,] -> df
+
+# remove cases without syll label
+df[is.na(df$syll_label)==F,] -> df
+
+# remove cases with less than 6 syllables
+0 -> df$rm
+for (f in unique(df$file)){
+  if (nrow(df[df$file==f,])<6){
+    1 -> df$rm[df$file==f]
+  }
+  if (length(unique(df$syll_label[df$file==f]))<6){
+    1 -> df$rm[df$file==f]
+  }
+}
+df[df$rm==0,] -> df
+
+# remove case with extreme delta f0 or sync values
+df[df$file!="cut-FOXNEWSW_20160630_020000_Hannity",] -> df
+df[df$file!="cut-SFGTV_20171219_120000_Government_Access_Programming",] -> df
+df[df$file!="cut-ALJAZAM_20150723_020000_America_Tonight",] -> df
+df[df$file!="cut-FOXNEWSW_20131029_210000_The_Five",] -> df
+df[df$file!="cut-SFGTV_20190516_180000_Government_Access_Programming",] -> df
+df[df$file!="cut-WRC_20120927_200000_News_4_at_4",] -> df
+df[df$file!="cut-CNNW_20160313_200000_CNN_Newsroom_With_Fredricka_Whitfield",] -> df
+df[df$file!="cut-CSPAN2_20211222_130200_Author_Discussion_on_the_Environment_and_Sustainability",] -> df
+
+# number syllables
+df$syll_label -> df$syll_nr
+ifelse(df$syll_label=="can"|df$syll_label=="could"|df$syll_label=="may",1,df$syll_nr) -> df$syll_nr
+ifelse(df$syll_label=="I",2,df$syll_nr) -> df$syll_nr
+ifelse(df$syll_label=="ask",3,df$syll_nr) -> df$syll_nr
+ifelse(df$syll_label=="you a",4,df$syll_nr) -> df$syll_nr
+ifelse(df$syll_label=="ques-",5,df$syll_nr) -> df$syll_nr
+ifelse(df$syll_label=="tion",6,df$syll_nr) -> df$syll_nr
+table(df$syll_label)
+
+# wide format
+dcast(setDT(df), file ~ syll_nr, value.var = c("DeltaF0_rel","sync_rel")) -> df
+
+# distance matrices
+
+dist(df %>%
+       select(grep("Delta", colnames(df)))
+) -> dist_delta
+
+dist(df %>%
+       select(grep("sync", colnames(df)))
+) -> dist_sync
+
+# rescale and combine distmats
+rescale(dist_delta,c(0,1)) -> dist_delta
+rescale(dist_sync,c(0,1)) -> dist_sync
+
+dist_delta + dist_sync -> dist
+
+
+# hclust
+lc = "complete"
+hclust(dist,method = lc) -> hc
+k = 8
+cutree(hc,k) -> df$cluster
+
+# plot
+melt(df,id.vars = c("file","cluster"),measure.vars = list(c(2:7),c(8:13)),variable.name = "syll_nr",value.name = c("delta","sync")) -> df_plot
+
+clrs <- c("Delta f0"="red", "Synchrony"="blue")
+rescale(x = df_plot$sync, to =  c(min(df_plot$delta), max(df_plot$delta))) -> df_plot$sync_resc
+a.diff <- max(df_plot$delta) - min(df_plot$delta)
+b.diff <- max(df_plot$sync) - min(df_plot$sync)
+a.min <- min(df_plot$delta)
+b.min <- min(df_plot$sync)
+
+
+ggplot(df_plot, aes(x = syll_nr)) +
+  stat_summary(
+    mapping = aes(y =delta, colour = "Delta f0"),
+    fun = mean,
+    group = "cluster",
+    geom = "line",
+    size = 1,
+    show.legend = T
+  ) +
+  stat_summary(
+    mapping = aes(y =sync_resc, colour = "Synchrony"),
+    fun = mean,
+    group = "cluster",
+    geom = "line",
+    size = 1,
+    show.legend = T
+  ) + 
+  scale_colour_manual(name="Measure:", values=clrs) +
+  scale_y_continuous(
+    name = names(clrs[1]),
+    sec.axis = sec_axis(~((. -a.min) * b.diff / a.diff) + b.min, name=names(clrs[2]))
+  ) +
+  theme(legend.position="bottom")  +
+  facet_wrap(~ cluster,nrow=2) +
+  ylab("") +
+  scale_x_discrete(name ="Syllable", labels=c("Can","I","ask","you a","ques-","tion"))+
+  theme_classic(base_size = 20)
+
+
+ggplot(df_plot, aes(x = syll_nr)) +
+  geom_violin(
+    mapping = aes(y =delta, colour = "Delta f0"),
+    fill = "transparent"
+  ) +
+  geom_violin(
+    mapping = aes(y =sync_resc, colour = "Synchrony"),
+    fill = "transparent"
+  ) + 
+  scale_colour_manual(name="Measure:", values=clrs) +
+  scale_y_continuous(
+    name = names(clrs[1]),
+    sec.axis = sec_axis(~((. -a.min) * b.diff / a.diff) + b.min, name=names(clrs[2]))
+  ) +
+  theme(legend.position="bottom")  +
+  facet_wrap(~ cluster,nrow=2) +
+  ylab("") +
+  scale_x_discrete(name ="Syllable", labels=c("Can","I","ask","you a","ques-","tion"))+
+  theme_classic(base_size = 20)
+
+table(df_plot$cluster)/6
+
+# prototypes per cluster
+0 -> df$devDlt
+0 -> df$devSnc
+
+for (r in 1:nrow(df)){
+  mean(unlist(abs(df[r,2:7]-colMeans(df[,2:7][df$cluster==df$cluster[r]])))) -> df$devDlt[r]
+  mean(unlist(abs(df[r,8:13]-colMeans(df[,8:13][df$cluster==df$cluster[r]])))) -> df$devSnc[r]
+}
+rescale(df$devDlt,c(0,1)) -> df$devDlt
+rescale(df$devSnc,c(0,1)) -> df$devSnc
+
+for (c in 1:max(df$cluster)){
+  print(paste0(c,": ",df$file[df$cluster==c][which.min(df$devDlt[df$cluster==c]+df$devSnc[df$cluster==c])]))
+}
+
+
+
+```
+
+# Write clusterAnalysis table
+
+```{r write_clusterAnalysis_df}
+## Write the scores data file
+
+clusterAnalysis_df <- droplevels(subset(df, select = c(file, cluster)))
+
+write.csv(clusterAnalysis_df, "data_tables/clusterAnalysis_df.csv", row.names=FALSE)
+
+```
