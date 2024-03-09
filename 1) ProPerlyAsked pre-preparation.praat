@@ -14,7 +14,6 @@
 #   override these default locations in the path fields in the script below
 #   or in the form that this script initiates.
 #
-# AUTHORS:	Aviad Albert and Francesco Cangemi {a.albert / fcangemi} @uni-koeln.de
 #
 # To Run:   Copy this text into a Praat script window (or simply double click the
 #   file to directly open in a Praat script window) and run.
