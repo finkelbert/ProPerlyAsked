@@ -1,0 +1,149 @@
+# ProPer backToPeriograms (VII)
+
+```{r clean_start}
+rm(list = ls())
+
+## Load required libraries 
+require(tidyverse)
+# require(seewave)
+require(Cairo)
+# require(zoo)
+# require(signal)
+
+## Read the previous table: main_df
+comp_df <- read.csv("data_tables/comp_df.csv") %>% distinct(file, t, .keep_all = TRUE)
+
+clusterAnalysis_df <- read.csv("data_tables/clusterAnalysis_df.csv") 
+
+ClusteredComp_df <- left_join(comp_df, clusterAnalysis_df, by = "file")
+
+ClusteredComp_df <- dplyr::filter(ClusteredComp_df, !is.na(cluster))
+
+ClusteredComp_df <- mutate(
+  group_by(ClusteredComp_df, file),
+  ## variables for plot normalization
+  plotFloorToken = round(f0_token_min - f0_token_range),
+  plotFloorSpeaker = round(f0_speaker_min - f0_speaker_range),
+  plotFloorData = round(f0_data_min - f0_data_range),
+  ## create plot-friendly data
+  DeltaF0Label2 = ifelse(
+    round(DeltaF0)>0, paste0('+',round(abs(DeltaF0_rel))), 
+    paste0(round(DeltaF0_rel))),
+  syncLabel2 = ifelse(
+    round(synchrony)>0, paste0('+',round(abs(sync_rel),1)), 
+    paste0(round(sync_rel,1)))
+  )
+
+
+## get the filemames list 
+files <- ClusteredComp_df$file
+files <- files[!duplicated(files)==TRUE]
+
+```
+
+## Plot periograms with computations overlaid
+
+```{r plot, warning=FALSE}
+
+yScale <- c('tokenScale', 'speakerScale', 'dataScale')[1]
+
+##################################
+########### loop start ###########
+plyr::ldply(files, function(f){
+sel_file <- f
+##################################
+
+#####################################
+###### manual singles, no-loop ######
+# sel_file <- "cut-SFGTV_20190112_010000_Government_Access_Programming"
+#####################################
+
+single_token <- dplyr::filter(ClusteredComp_df, file==sel_file)
+
+plotFloor <- ifelse(yScale == 'tokenScale', single_token$plotFloorToken[1],
+                     ifelse(yScale == 'speakerScale', single_token$plotFloorSpeaker[1],
+                            ifelse(yScale == 'dataScale', single_token$plotFloorData[1], -275)))
+plotUnits <- ifelse(yScale == 'tokenScale', round(single_token$f0_token_range[1]/30),
+                     ifelse(yScale == 'speakerScale', round(single_token$f0_speaker_range[1]/30),
+                            ifelse(yScale == 'dataScale', round(single_token$f0_data_range[1]/30), 12)))
+f0range <- ifelse(yScale == 'tokenScale', single_token$f0_token_range[1],
+                     ifelse(yScale == 'speakerScale', single_token$f0_speaker_range[1],
+                            ifelse(yScale == 'dataScale', single_token$f0_data_range[1], 350)))
+f0max <- ifelse(yScale == 'tokenScale', single_token$f0_token_max[1],
+                     ifelse(yScale == 'speakerScale', single_token$f0_speaker_max[1],
+                            ifelse(yScale == 'dataScale', single_token$f0_data_max[1], 425)))
+midLow <- ifelse(yScale == 'tokenScale', round(single_token$f0_token_min[1]-single_token$f0_token_range[1]/2),
+                     ifelse(yScale == 'speakerScale', round(single_token$f0_speaker_min[1]-single_token$f0_speaker_range[1]/2),
+                            ifelse(yScale == 'dataScale', round(single_token$f0_data_min[1]-single_token$f0_data_range[1]/2), -100)))
+midHigh <- ifelse(yScale == 'tokenScale', round(single_token$f0_token_max[1]-single_token$f0_token_range[1]/2),
+                     ifelse(yScale == 'speakerScale', round(single_token$f0_speaker_max[1]-single_token$f0_speaker_range[1]/2),
+                            ifelse(yScale == 'dataScale', round(single_token$f0_data_max[1]-single_token$f0_data_range[1]/2), 250)))
+
+maxBounds <- max(single_token$auto_bounds,single_token$syll_bounds,na.rm = T)
+minBounds <- min(single_token$auto_bounds,single_token$syll_bounds,na.rm = T)
+
+plot_comp <-
+  ggplot(single_token, aes(x=t)) +
+####################### F0 curves
+  ##### smooth
+  # geom_point(aes(y=f0_smooth),color="blue3", alpha=.3, size=.3) +
+  ##### interpolated
+  # geom_point(aes(y=f0Post),color="red", alpha=.3, size=.3) +
+  # geom_point(aes(y=f0Post_dropInterp),color="purple", alpha=1, size=.3) +
+  ##### periogram (smogPP)
+  geom_line(aes(y=f0Post),color="grey", alpha=single_token$smogPP_20Hz, size=single_token$smogPP_20Hz*4.5) +
+####################### Periodic energy curve
+  geom_line(aes(y=smogPP_20Hz*f0range+plotFloor),color="black", alpha=.75, size=.5) +
+####################### boundaries
+  # geom_segment(aes(x=syll_bounds, xend=syll_bounds, y=plotFloor, yend=f0max+plotUnits*9), linetype="dotted", color="grey", size=.5, alpha=.2) +
+  geom_segment(aes(x=auto_bounds, xend=auto_bounds, y=plotFloor, yend=f0max+plotUnits*9), position = "dodge", color="black", size=.5, alpha=.5, linetype = "solid", lineend = "round") +
+####################### landmarks 
+  ##### CoMs
+  geom_segment(aes(x=CoM_corr, xend=CoM_corr, y=plotFloor, yend=PERatCoM*f0range+plotFloor), position = "dodge", color="black", size=.5, alpha=.5, linetype = "longdash", lineend = "round") +
+  geom_segment(aes(x=CoM_corr, xend=CoM_corr, y=f0atCoM+plotUnits*3, yend=f0atCoM-plotUnits*3), position = "dodge", color="black", size=.3, alpha=.9, linetype = "longdash", lineend = "round") +
+  ##### CoGs
+  geom_segment(aes(x=CoG_corr, xend=CoG_corr, y=f0atCoG+plotUnits*3, yend=f0atCoG-plotUnits*3), position = "dodge", color="black", size=.3, alpha=.9, linetype = "solid", lineend = "round") +
+####################### annotations
+  ##### text
+  geom_text(aes(x=single_token$syll_mid, y=f0max+plotUnits*8, label=syll_label, check_overlap=T), color="black", size=5, family= "Helvetica") +
+  ##### ∆F0 / F0 @ CoM
+  geom_text(aes(x=CoM_corr, y=f0atCoM+plotUnits*4, label=DeltaF0Label2), check_overlap=T, color="red", size=4, family= "Helvetica") + 
+  ##### Synchrony
+  geom_text(aes(x=CoM_corr + (round(synchrony)/2), y=f0atCoG-plotUnits*4, label=syncLabel2), check_overlap=T, color="blue", size=4, family= "Helvetica") +
+####################### legend
+  ##### CoGs
+  geom_segment(aes(x=minBounds-20, xend=minBounds-20, y=midHigh-plotUnits*3, yend=midHigh+plotUnits*3), color="black", size=.3, alpha=.8, linetype = "solid", lineend = "round", position = "dodge") +
+  geom_text(aes(x=minBounds-30, y=midHigh), label="CoG", color="black", alpha=1, size=4, family = "Helvetica", check_overlap=T, na.rm = T, hjust="right") +
+  ##### CoMs
+  geom_segment(aes(x=minBounds-20, xend=minBounds-20, y=midLow+plotUnits*3, yend=midLow-plotUnits*3), color="black", size=.3, alpha=.8, linetype = "longdash", lineend = "round", position = "dodge") +
+  geom_text(aes(x=minBounds-30, y=midLow), label="CoM", color="black", alpha=1, size=4, family = "Helvetica", check_overlap=T, na.rm = T, hjust="right") +
+  ##### ∆F0 / F0 @ CoM
+  geom_text(aes(x=maxBounds+10, y=midHigh+plotUnits*4), label="∆F0", color="red", alpha=1, size=3.5, family = "Helvetica", check_overlap=T, na.rm = T, hjust="left") +
+  geom_text(aes(x=maxBounds+10, y=midHigh+plotUnits*2), label="low < 0 < high", color="red", alpha=1, size=3, family = "Helvetica", check_overlap=T, na.rm = T, hjust="left") +
+  ##### Synchrony
+  geom_text(aes(x=maxBounds+10, y=midHigh-plotUnits*2), label="Synchrony", check_overlap=T, color="blue", size=3.5, family= "Helvetica", hjust="left") +
+  geom_text(aes(x=maxBounds+10, y=midHigh-plotUnits*4), label="fall < 0 < rise", check_overlap=T, color="blue", size=3, family= "Helvetica", hjust="left") +
+  ##### Cluster
+  # geom_text(aes(x=minBounds-20, y=f0max+plotUnits*3), label="Cluster", check_overlap=T, color="black", size=3, family= "Helvetica", hjust="right") +
+  # geom_text(aes(x=minBounds-40, y=f0max+plotUnits*1), label=single_token$cluster, check_overlap=T, color="black", size=3, family= "Helvetica", hjust="right") +
+####################### plot stuff
+  xlim(minBounds-100, max(single_token$t)+100) +
+  ylim(plotFloor-plotUnits, f0max+plotUnits*9) +
+  theme(plot.title = element_blank(), panel.background = element_blank(), plot.background = element_rect(fill = "white"), panel.grid = element_blank(), axis.title = element_blank(), axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 10), axis.ticks = element_blank(), strip.text = element_text(size = 8)) 
+print(plot_comp)
+##--save?
+ggsave(plot_comp, file=paste0("plots/PERIOGRAM+(",yScale,") Cluster ",single_token$cluster," ",sel_file,".pdf"),device=cairo_pdf)
+
+##################################
+############ loop end ############
+})
+##################################
+
+```
+
+# Write ClusteredComp_df table
+
+```{r write_ClusteredComp_df}
+## Write the computation data file
+write.csv(ClusteredComp_df, "data_tables/ClusteredComp_df.csv", row.names=FALSE)
+```
