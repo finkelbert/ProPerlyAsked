@@ -1,1 +1,1 @@
-Plots from R go in this folder.
+Plots from R go in this folder. You need to run the code to produce the relevant plots in this folder.

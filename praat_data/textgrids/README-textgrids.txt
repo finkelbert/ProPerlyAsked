@@ -1,2 +1,1 @@
-Folder for Praat TextGrids that corrsepond with the audio files in '/audio'.
-Note that TextGrids can be optionally supplied by the user. They do not result from the automatic Praat script.
+Folder for Praat TextGrids that corrsepond with the audio files in '/audio'. TextGrids are not shared through the GitHub link. Find them in the folder "IV. Selected items for analysis (190 items)" on OSF and move them here on your local version.

@@ -1,1 +1,1 @@
-Audio files for Praat's analysis go in this folder.
+Audio files for Praat's analysis go in this folder. They are not shared through the GitHub link. Find them in the folder "IV. Selected items for analysis (190 items)" on OSF and move them here on your local version.

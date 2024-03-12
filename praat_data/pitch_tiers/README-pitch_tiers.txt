@@ -1,1 +1,1 @@
-Folder for pitch tiers from Praat's output analysis.
+Folder for pitch tiers from Praat's output analysis. You need to run the code to produce the relevant files in this folder.
