@@ -37,14 +37,14 @@ for (f in unique(df$file)){
 df[df$rm==0,] -> df
 
 # remove case with extreme delta f0 or sync values
-df[df$file!="cut-FOXNEWSW_20160630_020000_Hannity",] -> df
-df[df$file!="cut-SFGTV_20171219_120000_Government_Access_Programming",] -> df
-df[df$file!="cut-ALJAZAM_20150723_020000_America_Tonight",] -> df
-df[df$file!="cut-FOXNEWSW_20131029_210000_The_Five",] -> df
-df[df$file!="cut-SFGTV_20190516_180000_Government_Access_Programming",] -> df
-df[df$file!="cut-WRC_20120927_200000_News_4_at_4",] -> df
-df[df$file!="cut-CNNW_20160313_200000_CNN_Newsroom_With_Fredricka_Whitfield",] -> df
-df[df$file!="cut-CSPAN2_20211222_130200_Author_Discussion_on_the_Environment_and_Sustainability",] -> df
+# df[df$file!="cut-FOXNEWSW_20160630_020000_Hannity",] -> df
+# df[df$file!="cut-SFGTV_20171219_120000_Government_Access_Programming",] -> df
+# df[df$file!="cut-ALJAZAM_20150723_020000_America_Tonight",] -> df
+# df[df$file!="cut-FOXNEWSW_20131029_210000_The_Five",] -> df
+# df[df$file!="cut-SFGTV_20190516_180000_Government_Access_Programming",] -> df
+# df[df$file!="cut-WRC_20120927_200000_News_4_at_4",] -> df
+# df[df$file!="cut-CNNW_20160313_200000_CNN_Newsroom_With_Fredricka_Whitfield",] -> df
+# df[df$file!="cut-CSPAN2_20211222_130200_Author_Discussion_on_the_Environment_and_Sustainability",] -> df
 
 # number syllables
 df$syll_label -> df$syll_nr
