@@ -40,7 +40,7 @@ useManual <- c(TRUE, FALSE)[1] # {[1] -- [2]}
 ######## **autoMan** ######## (If *useManual* = [1] (TRUE))
 # adjust the maximum allowed distance (in ms) between automatic and manual boundaries (based on periodic energy curve and TextGrid annotation, respectively)
 # lower values are more restrictive: at '0', the detected boundaries are forced on the TextGrid segmentations. 40 ms works well as default.
-autoMan <- 40 # {0 -- 100}
+autoMan <- 35 # {0 -- 100}
 #
 ######## **averageSyll** ######## (If *useManual* = [2] (FALSE))
 #### determine expected syllable number by average (when 'useManual' = FALSE)
@@ -81,7 +81,7 @@ comp_df <- mutate(
 comp_df <- mutate(
   group_by(comp_df, file),
 ## compute and smooth 1st and 2nd derivatives of the periodic energy curve
-  smogPP_1stDer = ifelse(t==0, 0, diff(smogPP_20Hz)*1000), # ifelse(t==0, 0, (smogPP_20Hz - lag(smogPP_20Hz,1))*1000),
+    smogPP_1stDer = ifelse(t==0, 0, diff(smogPP_12Hz)*1000), # ifelse(t==0, 0, (smogPP_20Hz - lag(smogPP_20Hz,1))*1000),
   # smogPP_1stDer = ifelse(t==0, 0, (smogPP_20Hz - lag(smogPP_20Hz,1))*1000),
   # smogPP_1stDer = filter(LowPass40Hz, smogPP_1stDer),
   smogPP_1stDer = bwfilter(wave = smogPP_1stDer, f = 1000, to = 40, n = 2, output = "Sample"),
@@ -100,7 +100,7 @@ single_token$boundetect <- c()
 # 
 expSyllNum <- ifelse(useManual==TRUE,
                      length(which(!is.na(single_token$syll_bounds))),
-                     (length(which(single_token$smogPP_20Hz > 0)) / averageSyll) + 1)
+                     (length(which(single_token$smogPP_12Hz > 0)) / averageSyll) + 1)
 #
 ## == ## == ## == ## == ## == ## == ## == ## == ## == ## == ##
 ## == ## == ## == ## == ## == ## == ## == ## == ## == ## == ##
@@ -250,7 +250,7 @@ auto_boundsPlot <- dplyr::filter(droplevels(comp_df), file==detect_sel_file)
 # plot derivatives to adjust automatic detector
 singleBounds <- ggplot(auto_boundsPlot, aes(x=t)) +
 ##### Periodic energy (smogPP_XXHz)
-  geom_line(aes(y=smogPP_20Hz*100), color="red", alpha=.4, size=1.5) +
+  geom_line(aes(y=smogPP_12Hz*100), color="red", alpha=.4, size=1.5) +
 #### boundaries
   geom_hline(yintercept = 0, size=.2, alpha=.5) +
   {if(manual==TRUE) geom_vline(aes(xintercept=syll_bounds), linetype="dotted", color="gray", size=.5, alpha=.5)} +
@@ -323,13 +323,13 @@ markMap <- function(.x,.f,...) {
 ### Caculation functions (specific)
 # Area Under the Curve ('mass' relating to prosodic strength)
 mass <- function(df) {
-  x <- round(sum(df$smogPP_20Hz, na.rm=T),3) 
+  x <- round(sum(df$smogPP_12Hz, na.rm=T),3) 
   x
   }
 #
 # length of interval with periodic energy 
 intervalDuration <- function(df) {
-  x <- length(which(df$smogPP_20Hz > 0.01)) 
+  x <- length(which(df$smogPP_12Hz > 0.01)) 
   x
   }
 #
@@ -337,8 +337,8 @@ intervalDuration <- function(df) {
 CoM <- function(df) {
   # print(df)
   ifelse(
-    sum(df$smogPP_20Hz, na.rm=T) < 5, 0, # minimum = 50 (ms) * 0.1 (smogPP) = 5
-    round(sum(df$smogPP_20Hz * df$t, na.rm=T) / sum(df$smogPP_20Hz, na.rm=T)))
+    sum(df$smogPP_12Hz, na.rm=T) < 5, 0, # minimum = 50 (ms) * 0.1 (smogPP) = 5
+    round(sum(df$smogPP_12Hz * df$t, na.rm=T) / sum(df$smogPP_12Hz, na.rm=T)))
   }
 #
 # Center of Gravity (center of F0 slope) 
@@ -347,7 +347,7 @@ comp_df <- mutate(
   group_by(comp_df, file),
 ##  f0_smooth_stretch_interp_smooth_drop interpolation
   f0Floor4real = ifelse(
-  smogPP_20Hz < 0.1, NA, f0Post_dropInterp)
+  smogPP_12Hz < 0.1, NA, f0Post_dropInterp)
   # f0Post_dropInterp = ifelse(
   # is.na(f0_smooth) | smogPP_20Hz < 0.1, NA, f0Post)
 # ### stretched F0 time-series with "real' local minima (used to compute CoG)
@@ -361,21 +361,23 @@ comp_df <- mutate(
 # CoG uses the interpolated F0 curve ('f0Post') multiplied by a 0--1 scale of the corresponding periodic energy  ('smogPP_20Hz')
 CoG <- function(df) {
   # set the floor of the F0 curve: the interval's minimum minus a fixed percentage of the overall range (.1--.25)
-  f0Floor <- ifelse(df$f0_speaker_range_median > 99, 
-                    min(df$f0Floor4real, na.rm=T) - .1 * df$f0_speaker_range_median, 
+  f0Floor <- ifelse(df$f0_token_range > 99, 
+  # f0Floor <- ifelse(df$f0_speaker_range_median > 99, 
+                    min(df$f0Floor4real, na.rm=T) - .1 * df$f0_token_range, 
+                    # min(df$f0Floor4real, na.rm=T) - .1 * df$f0_speaker_range_median, 
                     min(df$f0Floor4real, na.rm=T) - .1 * 100)
                     # min(df$f0_realFloorStretch, na.rm=T) - .1 * df$f0_speaker_range_median, 
                     # min(df$f0_realFloorStretch, na.rm=T) - .1 * 100)
   ifelse(
-    sum(df$smogPP_20Hz, na.rm=T) < 5, 0, # minimum = 50 (ms) * 0.1 (smogPP) = 5
-    round(sum((df$f0Post - f0Floor) * df$t * df$smogPP_20Hz, na.rm=T) / sum((df$f0Post - f0Floor) * df$smogPP_20Hz, na.rm=T),3))
+    sum(df$smogPP_12Hz, na.rm=T) < 5, 0, # minimum = 50 (ms) * 0.1 (smogPP) = 5
+    round(sum((df$f0Post - f0Floor) * df$t * df$smogPP_12Hz, na.rm=T) / sum((df$f0Post - f0Floor) * df$smogPP_12Hz, na.rm=T),3))
   }
 #
 # F0 and periodic energy values at centers
 f0atCoM <- function(df) ifelse(df$CoM==0, 0, df$f0Post[df$t == round(df$CoM)])
 f0atCoG <- function(df) ifelse(df$CoG==0, 0, df$f0Post[df$t == round(df$CoG)])
-PERatCoM <- function(df) ifelse(df$CoM==0, 0, df$smogPP_20Hz[df$t == round(df$CoM)])
-PERatCoG <- function(df) ifelse(df$CoG==0, 0, df$smogPP_20Hz[df$t == round(df$CoG)])
+PERatCoM <- function(df) ifelse(df$CoM==0, 0, df$smogPP_12Hz[df$t == round(df$CoM)])
+PERatCoG <- function(df) ifelse(df$CoG==0, 0, df$smogPP_12Hz[df$t == round(df$CoG)])
 #
 # Synchrony between CoG and CoM: 
 synchrony <- function(df) {
@@ -434,16 +436,18 @@ comp_df <- mutate(
   CoMatCoM = ifelse(CoM == t , CoM, NA),
   ## '∆F0': add token-initial values (realtive to speaker's median F0)
   DeltaF0 = ifelse(
-    min(which(!is.na(CoM)), na.rm = T) == t+1, f0atCoM - f0_speaker_median, 
+    min(which(!is.na(CoM)), na.rm = T) == t+1, f0atCoM - f0_token_median, 
+    # min(which(!is.na(CoM)), na.rm = T) == t+1, f0atCoM - f0_speaker_median, 
     ifelse(
       (!is.na(auto_bounds) & !is.na(f0atCoM)), DeltaF0, NA)),
   ## '∆F0': stretch observations
   DeltaF0 = ifelse(
     !is.na(mass), na.locf(DeltaF0, na.rm=F), NA),
   ## normalize parameters 
-  DeltaF0_rel = round((DeltaF0 / f0_speaker_range) * 100, 1),
+  DeltaF0_rel = round((DeltaF0 / f0_token_range) * 100, 1),
+  # DeltaF0_rel = round((DeltaF0 / f0_speaker_range) * 100, 1),
   sync_rel = round((synchrony / intervalDuration) * 100, 2),
-  mass_rel = round(mass / (sum(smogPP_20Hz, na.rm=T) / length(levels(as.factor(CoM_corr)))), 3),
+  mass_rel = round(mass / (sum(smogPP_12Hz, na.rm=T) / length(levels(as.factor(CoM_corr)))), 3),
   intervalDuration_rel = ifelse(
     !is.na(intervalDuration), 
     round(intervalDuration / max(intervalDuration, na.rm=T), 3), NA),
@@ -558,9 +562,9 @@ plot_comp <-
   # geom_point(aes(y=f0Post),color="red", alpha=.3, size=.3) +
   # geom_point(aes(y=f0Post_dropInterp),color="purple", alpha=1, size=.3) +
   ##### periogram (smogPP)
-  geom_line(aes(y=f0Post),color="blue", alpha=single_token$smogPP_20Hz, size=single_token$smogPP_20Hz*3.5) +
+  geom_line(aes(y=f0Post),color="blue", alpha=single_token$smogPP_12Hz, size=single_token$smogPP_12Hz*3.5) +
 ####################### Periodic energy curve
-  geom_line(aes(y=smogPP_20Hz*f0range+plotFloor),color="red", alpha=.75, size=.5) +
+  geom_line(aes(y=smogPP_12Hz*f0range+plotFloor),color="red", alpha=.75, size=.5) +
 ####################### Speech-rate curve
   geom_line(aes(y=localSpeechRate*f0range+plotFloor),color="springgreen4", alpha=.75, size=2.5, linetype="solid", linejoin = "round")+#, lineend = "butt", linejoin = "round") +
 ####################### boundaries

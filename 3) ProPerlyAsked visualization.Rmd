@@ -44,7 +44,7 @@ files <- files[!duplicated(files)==TRUE]
 #
 ##    Adjust 'perFloor' to find the single most fitting value 
 # (you can choose multiple values for different speakers and/or tokens later):
-perFloor <- .01 # {.001 -- .05}; fitting values should be likely found between 0.1% (0.001) and 5% (0.05) 
+perFloor <- .05 # {.001 -- .05}; fitting values should be likely found between 0.1% (0.001) and 5% (0.05) 
 #
 ##    Anchor for relative measurements: 
 # Relative to the entire data ('data'), to same speaker ('speaker'), or to each token by itself ('token').
@@ -73,7 +73,7 @@ main_df <- mutate(
 
   ##  f0 post smooth_stretch_interp_smooth ('f0Post')
     # f0_CCPost = round(bwfilter(wave = f0_CCsmootchInterp, f = 1000, to = 12, n = 1, output = "Sample")),
-    f0_CCPost = f0_CCsmootchInterpLin,
+    # f0_CCPost = f0_CCsmootchInterpLin,
     # f0_CCPost = round(f0_CCsmootchInterpLin,2),
     # f0Post = round(bwfilter(wave = f0_smootchInterp, f = 1000, to = 12, n = 1, output = "Sample")),
     # f0Post = f0_smootchInterpLin,
@@ -295,18 +295,6 @@ ggsave(periogram_single1,file=paste0("plots/",sel_file1,"_perTest(",perFloor,")_
 
 ```
 
-Exclusions of dupes and wacky F0 contours (25 items)
-
-```{r exclude}
-
-main_df2 <- dplyr::filter(main_df, file != "cut-CNN_20100420_010000_Larry_King_Live" & file != "cut-CNNW_20140114_080000_Piers_Morgan_Live" & file != "cut-CSPAN_20170610_110000_Washington_Journal_News_Headlines_and_Viewer_Calls" & file != "cut-CSPAN_20181102_015800_Campaign_2018_Oprah_Winfrey_at_Rally_for_Stacey_Abrams" & file != "cut-CSPAN2_20180204_100700_Authors_Dave_Barry_and_Scott_Turow" & file != "cut-CSPAN2_20201113_212500_Juliet_SchorAfter_the_Gig" & file != "cut-FBC_20130116_210000_FOX_Business_After_the_Bell" & file != "cut-FOXNEWSW_20130509_050000_Greta_Van_Susteren" & file != "cut-FOXNEWSW_20131022_210000_The_Five" & file != "cut-FOXNEWSW_20171114_050000_Tucker_Carlson_Tonight" & file != "cut-KGO_20180131_073500_Jimmy_Kimmel_Live" & file != "cut-KPIX_20180804_063500_The_Late_Show_With_Stephen_Colbert" & file != "cut-MSNBCW_20160513_220000_With_All_Due_Respect" & file != "cut-SFGTV_20110409_200000" & file != "cut-SFGTV_20121120_133000" & file != "cut-SFGTV_20130207_033000" & file != "cut-SFGTV_20171228_090000_Government_Access_Programming" & file != "cut-SFGTV_20180210_000000_Government_Access_Programming" & file != "cut-SFGTV_20181101_040000_Government_Access_Programming" & file != "cut-SFGTV_20190517_020000_Government_Access_Programming" & file != "cut-SFGTV_20191024_050000_Government_Access_Programming" & file != "cut-SFGTV_20191129_050000_Government_Access_Programming" & file != "cut-SFGTV_20220930_230000_Board_of_Appeals" & file != "cut-WJZ_20130214_210000_Eyewitness_News_at_4" & file != "cut-WPVI_20170211_040000_Action_News_11pm")
-
-## get the filemames list 
-files2 <- main_df2$file
-files2 <- files2[!duplicated(files2)==TRUE]
-
-```
-
 ## re-adjust the perFloor value for selected speakers 
 (this can be used also for specific tokens but in typical scenarios it should make more sense to have a single value for a given recording condition, i.e. for speakers, not for tokens) 
 
@@ -314,24 +302,28 @@ files2 <- files2[!duplicated(files2)==TRUE]
 
 #### change the perFloor of specific tokens
 main_df2 <- mutate(
+  group_by(main_df, file),
+  perFloorStatus = ifelse(
+    file == "cut-SFGTV_20201206_130000_Entertainment_Commission" | file == "cut-CNBC_20181105_220000_Fast_Money" | file == "cut-CNNW_20180401_060000_Amanpour_Sex_and_Love_Around_the_World" | file == "cut-CNNW_20190926_010000_Cuomo_Prime_Time" | file == "cut-CSPAN_20210613_110000_Washington_Journal_06132021_a" | file == "cut-CSPAN_20210613_110000_Washington_Journal_06132021_b" | file == "cut-CSPAN2_20180204_100700_Authors_Dave_Barry_and_Scott_Turow" | file == "cut-CSPAN3_20190416_080900_President-Elect_Lincoln" | file == "cut-FOXNEWSW_20120808_060000_The_Five" | file == "cut-GBN_20221216_190000_Laurence_Fox" | file == "cut-KNTV_20210908_073700_Late_Night_With_Seth_Meyers" | file == "cut-SFGTV_20101023_013000" | file == "cut-SFGTV_20171219_120000_Government_Access_Programming" | file == "cut-SFGTV_20191109_000000_Government_Access_Programming", 
+    0.001, perFloorStatus))
+# 
+main_df2 <- mutate(
   group_by(main_df2, file),
-  #
   perFloorStatus = ifelse(
-    file == "cut-ALJAZAM_20150723_020000_America_Tonight" | file == 
-"cut-WTTG_20160216_220000_Fox_5_News__5",
-    0.05,                # set the new perFloor value
-    perFloorStatus),
-  #                      # repeat previous 4 lines for each unique perFloor value if necessary
+    file == "cut-ALJAZAM_20160105_010000_News" | file == "cut-BBCNEWS_20210930_050000_Breakfast" | file == "cut-CNBC_20090917_000000_CNBC_Reports" | file == "cut-CNBC_20100120_160000_The_Call" | file == "cut-CNBC_20120202_190000_Street_Signs" | file == "cut-CNBC_20180222_100000_Worldwide_Exchange" | file == "cut-CNN_20100420_010000_Larry_King_Live" | file == "cut-CNNW_20130423_010000_Piers_Morgan_Live" | file == "cut-CNNW_20131221_230000_CNN_Newsroom" | file == "cut-CNNW_20160226_180000_Wolf" | file == "cut-CNNW_20160313_200000_CNN_Newsroom_With_Fredricka_Whitfield" | file == "cut-CNNW_20160707_230000_Erin_Burnett_OutFront" | file == "cut-CNNW_20161110_020000_Anderson_Cooper_360" | file == "cut-CNNW_20221107_120000_CNN_This_Morning" | file == "cut-CNNW_20230225_030000_CNN_Tonight" | file == "cut-COM_20111208_020000_The_Daily_Show_With_Jon_Stewart" | file == "cut-COM_20210916_060000_The_Daily_Show_With_Trevor_Noah" | file == "cut-COM_20220218_070000_The_Daily_Show_With_Trevor_Noah" | file == "cut-CSPAN_20100411_100000_C-SPAN_Weekend" | file == "cut-CSPAN_20111105_010000_The_Contenders" | file == "cut-CSPAN_20140615_230000_Washington_This_Week" | file == "cut-CSPAN_20140829_110000_Washington_Journal" | file == "cut-CSPAN_20170221_140000_Washington_Journal_News_Headlines_and_Viewer_Calls" | file == "cut-CSPAN_20181102_015800_Campaign_2018_Oprah_Winfrey_at_Rally_for_Stacey_Abrams" | file == "cut-CSPAN_20191203_071100_Attorneys_in_Gun_Rights_Supreme_Court_Case" | file == "cut-CSPAN_20220613_165600_Washington_Journal_Open_Phones" | file == "cut-CSPAN_20220819_064300_Campaign_2022_PA_Senate_Candidate_Dr_Mehmet_Oz_Speaks_in_Philadelphia" | file == "cut-CSPAN_20230730_110000_Washington_Journal_07302023_a" | file == "cut-CSPAN_20230730_110000_Washington_Journal_07302023_b" | file == "cut-CSPAN2_20090823_230000_Book_TV" | file == "cut-CSPAN2_20101219_051500_Book_TV" | file == "cut-CSPAN2_20110130_130000_Book_TV" | file == "cut-CSPAN2_20170528_120100_Authors_Discuss_the_Republican_Party" | file == "cut-CSPAN2_20201113_212500_Juliet_SchorAfter_the_Gig", 
+    0.01, perFloorStatus)
+  )
+  
+main_df2 <- mutate(
+  group_by(main_df2, file),
   perFloorStatus = ifelse(
-    file == "cut-BLOOMBERG_20160514_000000_With_All_Due_Respect" | file == "cut-CNBC_20130909_230000_The_Kudlow_Report" | file == "cut-CNBC_20160719_210000_Fast_Money" | file == "cut-CNBC_20200510_070000_The_Profit" | file == "cut-CNN_20110816_010000_Piers_Morgan_Tonight" | file == "cut-CNNW_20140121_000000_Erin_Burnett_OutFront" | file == "cut-CNNW_20160508_140000_Fareed_Zakaria_GPS" | file == "cut-CNNW_20180109_000000_Erin_Burnett_OutFront" | file == "cut-CSPAN2_20110130_130000_Book_TV" | file == "cut-CSPAN3_20170424_231300_Trump_Administration_Health_Care_Policy" | file == "cut-CSPAN3_20181015_230600_Discussion_on_the_Opioid_Epidemic_at_Women_for_Trump_Event" | file == "cut-KGO_20131123_073500_Jimmy_Kimmel_Live" | file == "cut-KGO_20181222_073500_Jimmy_Kimmel_Live" | file == "cut-KGO_20230110_073500_Jimmy_Kimmel_Live" | file == "cut-KGO_20230915_063500_Jimmy_Kimmel_Live" | file == "cut-MSNBCW_20120315_140000_Jansing_and_Co" | file == "cut-SFGTV_20110405_080000" | file == "cut-SFGTV_20120213_104800" | file == "cut-SFGTV_20140809_003000" | file == "cut-SFGTV_20181201_080000_Government_Access_Programming" | file == "cut-WJZ_20130130_220000_Eyewitness_News_at_5" | file == "cut-WPVI_20170211_063700_Action_News_11pm" | file == "cut-WTTG_20120228_140000_Fox_Morning_News" | file == "cut-WTXF_20150518_130000_Good_Day_Philadelphia_at_9" | file == "cut-WTXF_20170105_140000_Good_Day_Philadelphia_at_9",    
-    0.03,                
-    perFloorStatus),
-  #                      
-  #### re-run 
-  perFloor_indeed = ifelse(
-    relTo=="token", round(max_token_per_power * perFloorStatus, 10), ifelse(
-      relTo=="data", round(max_data_per_power * perFloorStatus, 10), 
-      round(max_speaker_per_power * perFloorStatus, 10))),
+    file == "cut-CSPAN2_20211222_130200_Author_Discussion_on_the_Environment_and_Sustainability" | file == "cut-CSPAN3_20160824_000000_Writing_Presidential_Biographies" | file == "cut-CSPAN3_20181227_174400_A_Conversation_on_Presidents__the_Press" | file == "cut-CSPAN3_20210213_005900_American_Artifacts_Jim_Crow_Museum_of_Racist_Memorabilia" | file == "cut-FBC_20140922_200000_After_the_Bell" | file == "cut-FOXNEWS_20110817_070000_Red_Eye" | file == "cut-FOXNEWSW_20120626_040000_Hannity" | file == "cut-FOXNEWSW_20130116_210000_Your_World_With_Neil_Cavuto" | file == "cut-FOXNEWSW_20131029_210000_The_Five" | file == "cut-FOXNEWSW_20150501_050000_Hannity" | file == "cut-FOXNEWSW_20180205_170000_Outnumbered" | file == "cut-FOXNEWSW_20181220_170000_Outnumbered" | file == "cut-FOXNEWSW_20210916_030000_Gutfeld" | file == "cut-GBN_20230124_000000_Farage_Replay" | file == "cut-KGO_20131123_073500_Jimmy_Kimmel_Live" | file == "cut-KNTV_20130409_073500_Late_Night_With_Jimmy_Fallon" | file == "cut-KNTV_20191026_073700_Late_Night_With_Seth_Meyers" | file == "cut-KNTV_20230812_073700_Late_Night_With_Seth_Meyers" | file == "cut-KPIX_20200324_063500_The_Late_Show_With_Stephen_Colbert" | file == "cut-KTVU_20160518_000000_KTVU_Fox_2_News_at_5pm" | file == "cut-KYW_20170520_033500_The_Late_Show_With_Stephen_Colbert" | file == "cut-MSNBCW_20120524_200000_The_Dylan_Ratigan_Show" | file == "cut-MSNBCW_20160729_170000_The_Place_for_Politics_2016" | file == "cut-MSNBCW_20180105_140000_MSNBC_Live_With_Stephanie_Ruhle" | file == "cut-MSNBCW_20190314_200000_Deadline_White_House" | file == "cut-SFGTV_20121120_133000" | file == "cut-SFGTV_20130125_073000" | file == "cut-SFGTV_20130219_170000" | file == "cut-SFGTV_20180210_000000_Government_Access_Programming" | file == "cut-SFGTV_20181021_220000_Government_Access_Programming" | file == "cut-SFGTV_20181024_180000_Government_Access_Programming" | file == "cut-SFGTV_20191024_050000_Government_Access_Programming" | file == "cut-SFGTV_20191123_120000_Government_Access_Programming" | file == "cut-SFGTV_20220930_230000_Board_of_Appeals" | file == "cut-WPVI_20170802_220000_Action_News_6PM" | file == "cut-WRC_20120927_200000_News_4_at_4" | file == "cut-WUSA_20100820_210000_9News_Now_at_5pm", 
+    0.01, perFloorStatus)
+  )
+
+main_df2 <- mutate(
+  group_by(main_df2, file),
+  perFloor_indeed = ifelse(relTo=="token", round(max_token_per_power * perFloorStatus, 10), ifelse(relTo=="data", round(max_data_per_power * perFloorStatus, 10), round(max_speaker_per_power * perFloorStatus, 10))),
   ## log periodic power
   logPP = 10*log10(postPP/perFloor_indeed),
   logPP = ifelse(logPP<0 | is.na(logPP), 0, logPP),
@@ -360,11 +352,28 @@ main_df2 <- mutate(
 
 ```
 
+Exclusions due to wacky F0 contours (1 item)
+
+```{r exclude}
+
+main_df2 <- dplyr::filter(main_df2, file != "cut-SFGTV_20220930_230000_Board_of_Appeals")
+
+## get the filemames list
+files2 <- main_df2$file
+files2 <- files2[!duplicated(files2)==TRUE]
+
+```
+
+
 ## re-plot after changes (if relevant)
 
 ```{r re-plot, warning=FALSE, echo=FALSE}
 
-### chosse the f0 scale for the y-axis in the plots
+# ## get the filemames list
+# files2 <- main_df2$file
+# files2 <- files2[!duplicated(files2)==TRUE]
+
+  ### chosse the f0 scale for the y-axis in the plots
 yScale2 <- c('tokenScale', 'speakerScale', 'dataScale')[1]
 
 ##################################
@@ -406,7 +415,7 @@ periogram_single2 <-
   # geom_line(aes(y=logPP_rel*f0range2+plotFloor2),color="seashell", alpha=.3, size=2, linetype="longdash") +
 ########## Smoothed logPP 'smogPP' (4 smoothing flavors: 5/ 8/ 12/ 20 Hz low-pass filter)
   geom_line(aes(y=smogPP_20Hz*f0range2+plotFloor2),color="lightsteelblue", alpha=.5, size=.75) +
-  # geom_line(aes(y=smogPP_12Hz*f0range2+plotFloor2),color="lightyellow", alpha=.6, size=1) +
+  geom_line(aes(y=smogPP_12Hz*f0range2+plotFloor2),color="lightyellow", alpha=.6, size=1) +
   # geom_line(aes(y=smogPP_8Hz*f0range2+plotFloor2),color="moccasin", alpha=.4, size=1.5) +
   geom_line(aes(y=smogPP_5Hz*f0range2+plotFloor2),color="rosybrown1", alpha=.3, size=2) +
 ########## TextGrids boundaries and annotations (comment out if not available)
@@ -435,7 +444,7 @@ ggsave(periogram_single2,file=paste0("plots/",sel_file2,"_PERIOGRAM(",single_tok
 ```{r minimize_main_df}
 
 ## get rid of some variables
-mini_main_df <- droplevels(subset(main_df2, select = -c(interval_label, f0_CC, f0_CCsmootch, f0_CCsmootchInterpLin, f0_CCsmootchInterpSplin, f0_CCPost, intensity, periodicStrength, totalPower, periodicPower, max_data_per_power, max_data_strength, max_speaker_per_power, max_speaker_strength, max_token_per_power, max_token_strength, perFloor_indeed, periodicFraction, postPP, logPP)))
+mini_main_df <- droplevels(subset(main_df2, select = -c(intensity, periodicStrength, totalPower, periodicPower, max_data_per_power, max_data_strength, max_speaker_per_power, max_speaker_strength, max_token_per_power, max_token_strength, perFloor_indeed, periodicFraction, postPP, logPP)))
 
 ```
 
