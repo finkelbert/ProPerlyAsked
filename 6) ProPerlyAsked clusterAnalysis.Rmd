@@ -86,7 +86,7 @@ synchrony = T
 
 # 2. which number of clusters?
 
-k = 3
+k = 6
 ```
 
 ## Run the analysis
@@ -219,6 +219,17 @@ for (c in 1:max(df$cluster)){
 }
 ```
 
+# Write clusterAnalysis table
+
+```{r write_clusterAnalysis_df}
+## Write the scores data file
+
+clusterAnalysis_df <- droplevels(subset(df, select = c(file, cluster)))
+
+write.csv(clusterAnalysis_df, "data_tables/clusterAnalysis_df.csv", row.names=FALSE)
+
+```
+
 ## Evaluate the optimal number of clusters
 
 ```{r evaluation, warning=FALSE}
@@ -278,13 +289,3 @@ ggplot(df.var, aes(x=V1)) +
 
 ```
 
-# Write clusterAnalysis table
-
-```{r write_clusterAnalysis_df}
-## Write the scores data file
-
-clusterAnalysis_df <- droplevels(subset(df, select = c(file, cluster)))
-
-write.csv(clusterAnalysis_df, "data_tables/clusterAnalysis_df.csv", row.names=FALSE)
-
-```
