@@ -146,7 +146,8 @@ ggplot(df_plot, aes(x = syll_nr))  +
   facet_wrap(~ cluster,nrow=2,labeller = as_labeller(wrap_labs)) +
   ylab("") +
   scale_x_discrete(name ="Syllable", labels=c("Can","I","ask","you a","ques-","tion"))+
-  theme_classic(base_size = 20) -> p
+    theme(plot.title = element_blank(), plot.background = element_rect(fill = "white"), panel.grid.major.x = element_line(), panel.grid.major.y = element_blank(), axis.title.x = element_blank(), axis.title.y = element_text(size = 12), axis.text.x = element_text(size = 9), axis.text.y = element_text(size = 9), strip.text = element_text(size = 12)) -> p
+# theme_classic(base_size = 20)-> p
 
 if (synchrony == T){
 p +
@@ -171,9 +172,10 @@ p +
   ) -> p}
 
 p
+ggsave(p, file=paste0("plots/ClusterLinePlot_",k,"Clusters.pdf"),device=cairo_pdf)
 
 # violin plot
-ggplot(df_plot, aes(x = syll_nr)) +
+ggplot(df_plot, aes(x = syll_nr)) + 
   scale_colour_manual(name="Measure:", values=clrs) +
   scale_y_continuous(
     name = names(clrs[1]),
@@ -183,7 +185,8 @@ ggplot(df_plot, aes(x = syll_nr)) +
   facet_wrap(~ cluster,nrow=2,labeller = as_labeller(wrap_labs)) +
   ylab("") +
   scale_x_discrete(name ="Syllable", labels=c("Can","I","ask","you a","ques-","tion"))+
-  theme_classic(base_size = 20) -> vp
+    theme(plot.title = element_blank(), plot.background = element_rect(fill = "white"), panel.grid.major.x = element_line(), panel.grid.major.y = element_blank(), axis.title.x = element_blank(), axis.title.y = element_text(size = 12), axis.text.x = element_text(size = 9), axis.text.y = element_text(size = 9), strip.text = element_text(size = 12)) -> vp
+  # theme_classic(base_size = 20) -> vp
 
 if (delta_f0 ==T){
 vp +   geom_violin(
@@ -198,6 +201,8 @@ vp +  geom_violin(
 ) -> vp}
 
 vp
+ggsave(vp, file=paste0("plots/ClusterViolinPlot_",k,"Clusters.pdf"),device=cairo_pdf)
+
 ```
 
 ## Select prototypes per cluster
@@ -218,6 +223,29 @@ for (c in 1:max(df$cluster)){
   print(paste0(c,": ",df$file[df$cluster==c][which.min(df$devDlt[df$cluster==c]+df$devSnc[df$cluster==c])]))
 }
 ```
+
+k = 3
+[1] "1: cut-KGO_20210126_230000_ABC7_News_Getting_Answers"
+[1] "2: cut-KNTV_20180321_063400_The_Tonight_Show_Starring_Jimmy_Fallon"
+[1] "3: cut-KGO_20210610_063500_Jimmy_Kimmel_Live"
+
+k = 6
+[1] "1: cut-KGO_20210126_230000_ABC7_News_Getting_Answers"
+[1] "2: cut-KNTV_20180321_063400_The_Tonight_Show_Starring_Jimmy_Fallon"
+[1] "3: cut-BETW_20170322_070700_The_Daily_Show"
+[1] "4: cut-FOXNEWSW_20180220_170000_Outnumbered"
+[1] "5: cut-CNBC_20120202_190000_Street_Signs"
+[1] "6: cut-CSPAN_20170221_140000_Washington_Journal_News_Headlines_and_Viewer_Calls"
+
+k = 8
+[1] "1: cut-KGO_20210126_230000_ABC7_News_Getting_Answers"
+[1] "2: cut-KGO_20200318_230000_ABC7_News_400PM"
+[1] "3: cut-ALJAZ_20210315_113000_Inside_Story"
+[1] "4: cut-CSPAN3_20181015_230600_Discussion_on_the_Opioid_Epidemic_at_Women_for_Trump_Event"
+[1] "5: cut-FOXNEWSW_20180220_170000_Outnumbered"
+[1] "6: cut-CNBC_20120202_190000_Street_Signs"
+[1] "7: cut-CSPAN_20170221_140000_Washington_Journal_News_Headlines_and_Viewer_Calls"
+[1] "8: cut-CSPAN3_20210213_005900_American_Artifacts_Jim_Crow_Museum_of_Racist_Memorabilia"
 
 # Write clusterAnalysis table
 
@@ -277,7 +305,7 @@ rescale(df.var$wSnc,c(0,1)) -> df.var$wSnc
 rescale(df.var$bDlt,c(0,1)) -> df.var$bDlt
 rescale(df.var$bSnc,c(0,1)) -> df.var$bSnc
 
-ggplot(df.var, aes(x=V1)) +
+eval <- ggplot(df.var, aes(x=V1)) +
   geom_line(aes(y=wDlt),colour="red") +
   geom_line(aes(y=wSnc),colour="blue") +
   geom_line(aes(y=bDlt),colour="red", linetype=2) +
@@ -285,7 +313,10 @@ ggplot(df.var, aes(x=V1)) +
   annotate("text",13,0.5,label = paste0("--- between var","\n","\U2015 within var")) +
   ylab("scaled variance") +
   xlab("N clusters") +
-  theme_classic(base_size = 20)
+  # theme_classic(base_size = 20)
+  theme(plot.title = element_blank(), axis.title = element_text(size = 10), axis.text.x = element_text(size = 9), axis.text.y = element_text(size = 10), strip.text = element_text(size = 8))
 
+print(eval)
+ggsave(eval, file=paste0("plots/EvaluationClusterPlot.pdf"),device=cairo_pdf)
 ```
 
