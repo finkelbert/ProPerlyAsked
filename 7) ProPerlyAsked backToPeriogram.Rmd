@@ -91,7 +91,7 @@ plot_comp <-
   # geom_point(aes(y=f0Post),color="red", alpha=.3, size=.3) +
   # geom_point(aes(y=f0Post_dropInterp),color="purple", alpha=1, size=.3) +
   ##### periogram (smogPP)
-  geom_line(aes(y=f0Post),color="grey", alpha=single_token$smogPP_12Hz, size=single_token$smogPP_12Hz*4.5) +
+  geom_line(aes(y=f0Post),color="gray50", alpha=single_token$smogPP_12Hz, size=single_token$smogPP_12Hz*4.5) +
 ####################### Periodic energy curve
   geom_line(aes(y=smogPP_12Hz*f0range+plotFloor),color="black", alpha=.75, size=.5) +
 ####################### boundaries
