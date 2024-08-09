@@ -11,7 +11,10 @@ require(ggplot2) # line plot
 
 #### LOAD DATA ####
 read.csv("data_tables/nano_scores_df.csv") -> df
-read.csv("data_tables/mini_scores_df.csv")$intervalDuration -> df$dur
+read.csv("data_tables/mini_scores_df.csv")$intervalDuration_rel -> df$intervalDuration_rel
+read.csv("data_tables/mini_scores_df.csv")$localSpeechRate -> df$localSpeechRate
+
+# read.csv("data_tables/mini_scores_df.csv") -> mini_df
 
 ```
 
@@ -25,7 +28,8 @@ as.data.frame(table(df$file)) -> counts
 df[is.na(df$DeltaF0_rel)==F,] -> df
 df[is.na(df$sync_rel)==F,] -> df
 df[is.na(df$mass_rel)==F,] -> df
-df[is.na(df$dur)==F,] -> df
+df[is.na(df$intervalDuration_rel)==F,] -> df
+df[is.na(df$localSpeechRate)==F,] -> df
 
 # remove cases without syll label
 df[is.na(df$syll_label)==F,] -> df
@@ -53,7 +57,8 @@ ifelse(df$syll_label=="tion",6,df$syll_nr) -> df$syll_nr
 table(df$syll_label)
 
 # wide format
-dcast(setDT(df), file ~ syll_nr, value.var = c("DeltaF0_rel","sync_rel")) -> df
+dcast(setDT(df), file ~ syll_nr, value.var = c("DeltaF0_rel","sync_rel","mass_rel","intervalDuration_rel","localSpeechRate")) -> df
+# "intervalDuration_rel","localSpeechRate"
 
 # distance matrices
 dist(df %>%
@@ -64,9 +69,24 @@ dist(df %>%
        select(grep("sync", colnames(df)))
 ) -> dist_sync
 
+dist(df %>%
+       select(grep("mass", colnames(df)))
+) -> dist_mass
+
+dist(df %>%
+       select(grep("intervalDuration", colnames(df)))
+) -> dist_duration
+
+dist(df %>%
+       select(grep("localSpeechRate", colnames(df)))
+) -> dist_speechRate
+
 # rescale and combine distmats
 rescale(dist_delta,c(0,1)) -> dist_delta
 rescale(dist_sync,c(0,1)) -> dist_sync
+rescale(dist_mass,c(0,1)) -> dist_mass
+rescale(dist_duration,c(0,1)) -> dist_duration
+rescale(dist_speechRate,c(0,1)) -> dist_speechRate
 
 ```
 
@@ -81,29 +101,45 @@ Set 'k' to numbers between 2 and 12
 ```{r paramaterSetting, warning=FALSE}
 # 1. which (combination of) measure(s)?
 
-delta_f0 = T
-synchrony = T
+# delta_f0 = T
+# synchrony = T
+# mass = T
+# intervalDuration = T
+# speechRate = T
 
 # 2. which number of clusters?
 
-k = 6
+k = 12
 ```
 
 ## Run the analysis
 
 ```{r justDoIt, warning=FALSE}
 # get the (combined) distance matrix
-if (delta_f0 == T & synchrony == T){
-  dist_delta + dist_sync -> dist
-}
 
-if (delta_f0 == T & synchrony == F){
-  dist_delta -> dist
-}
 
-if (delta_f0 == F & synchrony == T){
-  dist_sync -> dist
-}
+# dist_delta -> dist
+# 
+# dist_sync -> dist
+# 
+# dist_delta + dist_sync -> dist
+
+dist_delta + dist_sync + dist_mass -> dist
+
+
+
+
+# if (delta_f0 == T & synchrony == T){
+#   dist_delta + dist_sync -> dist
+# }
+# 
+# if (delta_f0 == T & synchrony == F){
+#   dist_delta -> dist
+# }
+# 
+# if (delta_f0 == F & synchrony == T){
+#   dist_sync -> dist
+# }
 
 # clustering
 hclust(dist,method = "complete") -> hc
@@ -112,98 +148,142 @@ cutree(hc,k) -> df$cluster
 
 ## produce plots
 
-```{r plot, warning=FALSE}
-# line plot
-melt(df,id.vars = c("file","cluster"),measure.vars = list(c(2:7),c(8:13)),variable.name = "syll_nr",value.name = c("delta","sync")) -> df_plot
+```{r plot_prepare, warning=FALSE}
 
+melt(df,id.vars = c("file","cluster"),measure.vars = list(c(2:7),c(8:13),c(14:19)),variable.name = "syll_nr",value.name = c("delta","sync","mass")) -> df_plot
 
-clrs <- c("Delta f0"="red", "Synchrony"="blue")
-rescale(x = df_plot$sync, to =  c(min(df_plot$delta), max(df_plot$delta))) -> df_plot$sync_resc
-a.diff <- max(df_plot$delta) - min(df_plot$delta)
-b.diff <- max(df_plot$sync) - min(df_plot$sync)
-a.min <- min(df_plot$delta)
-b.min <- min(df_plot$sync)
+# rescale for plotting
+df_plot$delta <- rescale(df_plot$delta, c(0,1))
+df_plot$sync <- rescale(df_plot$sync, c(0,1))
+df_plot$mass <- rescale(df_plot$mass, c(0,1))
 
 rm(panel_text)
 rm(wrap_labs)
 panel_text <-
-  data.frame(label = paste0("n=", as.character(as.data.frame(
-    table(df$cluster)
-  )[, 2])),
-  cluster = 1:k)
+  data.frame(
+    label = paste0("n=", 
+                   as.character(as.data.frame(table(df$cluster))[, 2])),
+    cluster = 1:k
+    )
 wrap_labs <- (paste0(panel_text$cluster, " (", panel_text$label, ")"))
 attributes(wrap_labs)$names <- panel_text$cluster
 
-cues=2
+```
 
-ggplot(df_plot, aes(x = syll_nr))  +
-  scale_colour_manual(name="Measure:", values=clrs) +
-  scale_y_continuous(
-    name = names(clrs[1]),
-    sec.axis = sec_axis(~((. -a.min) * b.diff / a.diff) + b.min, name=names(clrs[2]))
-  ) +
-  theme(legend.position="bottom")  +
-  facet_wrap(~ cluster,nrow=2,labeller = as_labeller(wrap_labs)) +
-  ylab("") +
-  scale_x_discrete(name ="Syllable", labels=c("Can","I","ask","you a","ques-","tion"))+
-    theme(plot.title = element_blank(), plot.background = element_rect(fill = "white"), panel.grid.major.x = element_line(), panel.grid.major.y = element_blank(), axis.title.x = element_blank(), axis.title.y = element_text(size = 12), axis.text.x = element_text(size = 9), axis.text.y = element_text(size = 9), strip.text = element_text(size = 12)) -> p
-# theme_classic(base_size = 20)-> p
 
-if (synchrony == T){
-p +
-  stat_summary(
-    mapping = aes(y =sync_resc, colour = "Synchrony"),
-    fun = mean,
-    group = "cluster",
-    geom = "line",
-    linewidth = 1,
-    show.legend = T
-  ) -> p}
+```{r plot_new, warning=FALSE}
 
-if (delta_f0 == T){
-p +
-  stat_summary(
-    mapping = aes(y =delta, colour = "Delta f0"),
-    fun = mean,
-    group = "cluster",
-    geom = "line",
-    linewidth = 1,
-    show.legend = T
-  ) -> p}
-
-p
-ggsave(p, file=paste0("plots/ClusterLinePlot_",k,"Clusters.pdf"),device=cairo_pdf)
-
-# violin plot
-ggplot(df_plot, aes(x = syll_nr)) + 
-  scale_colour_manual(name="Measure:", values=clrs) +
-  scale_y_continuous(
-    name = names(clrs[1]),
-    sec.axis = sec_axis(~((. -a.min) * b.diff / a.diff) + b.min, name=names(clrs[2]))
-  ) +
-  theme(legend.position="bottom")  +
-  facet_wrap(~ cluster,nrow=2,labeller = as_labeller(wrap_labs)) +
-  ylab("") +
-  scale_x_discrete(name ="Syllable", labels=c("Can","I","ask","you a","ques-","tion"))+
-    theme(plot.title = element_blank(), plot.background = element_rect(fill = "white"), panel.grid.major.x = element_line(), panel.grid.major.y = element_blank(), axis.title.x = element_blank(), axis.title.y = element_text(size = 12), axis.text.x = element_text(size = 9), axis.text.y = element_text(size = 9), strip.text = element_text(size = 12)) -> vp
-  # theme_classic(base_size = 20) -> vp
-
-if (delta_f0 ==T){
-vp +   geom_violin(
-  mapping = aes(y =delta, colour = "Delta f0"),
-  fill = "transparent"
-) -> vp}
-
-if(synchrony ==T){
-vp +  geom_violin(
-    mapping = aes(y =sync_resc, colour = "Synchrony"),
-    fill = "transparent"
-) -> vp}
-
-vp
-ggsave(vp, file=paste0("plots/ClusterViolinPlot_",k,"Clusters.pdf"),device=cairo_pdf)
+clusterPlot <-
+  ggplot(df_plot, aes(x = syll_nr)) +
+  geom_jitter(aes(y=delta), color="green", alpha = 0.25) +
+  geom_jitter(aes(y=sync), color="blue", alpha = 0.25) +
+  geom_jitter(aes(y=mass), color="red", alpha = 0.25) +
+  geom_violin(aes(y=delta), color="green", alpha = 0.35) +
+  geom_violin(aes(y=sync), color="blue", alpha = 0.35) +
+  geom_violin(aes(y=mass), color="red", alpha = 0.35) +
+  facet_wrap(~ cluster, labeller = as_labeller(wrap_labs)) +
+  scale_x_discrete(name ="Syllable", labels=c("can","I","ask","you a","ques-","tion")) +
+  theme(panel.background = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(), axis.text.x = element_text(size = 7), axis.title.x = element_text(size=10))
+print(clusterPlot)
+#--save?
+ggsave(clusterPlot,file=paste0("plots/",k,"_clusters.pdf"),device=cairo_pdf)
 
 ```
+
+---
+
+# /////////////// OLD plots /////////////////
+# ```{r plot2--old, warning=FALSE}
+# 
+# 
+# clrs <- c("Delta f0"="red", "Synchrony"="blue", "Mass"="green")
+# rescale(x = df_plot$sync, to =  c(min(df_plot$delta), max(df_plot$delta))) -> df_plot$sync_resc
+# a.diff <- max(df_plot$delta) - min(df_plot$delta)
+# b.diff <- max(df_plot$sync) - min(df_plot$sync)
+# a.min <- min(df_plot$delta)
+# b.min <- min(df_plot$sync)
+# 
+# rm(panel_text)
+# rm(wrap_labs)
+# panel_text <-
+#   data.frame(label = paste0("n=", as.character(as.data.frame(
+#     table(df$cluster)
+#   )[, 2])),
+#   cluster = 1:k)
+# wrap_labs <- (paste0(panel_text$cluster, " (", panel_text$label, ")"))
+# attributes(wrap_labs)$names <- panel_text$cluster
+# 
+# cues=2
+# 
+# ggplot(df_plot, aes(x = syll_nr))  +
+#   scale_colour_manual(name="Measure:", values=clrs) +
+#   scale_y_continuous(
+#     name = names(clrs[1]),
+#     sec.axis = sec_axis(~((. -a.min) * b.diff / a.diff) + b.min, name=names(clrs[2]))
+#   ) +
+#   theme(legend.position="bottom")  +
+#   facet_wrap(~ cluster,nrow=2,labeller = as_labeller(wrap_labs)) +
+#   ylab("") +
+#   scale_x_discrete(name ="Syllable", labels=c("Can","I","ask","you a","ques-","tion"))+
+#     theme(plot.title = element_blank(), plot.background = element_rect(fill = "white"), panel.grid.major.x = element_line(), panel.grid.major.y = element_blank(), axis.title.x = element_blank(), axis.title.y = element_text(size = 12), axis.text.x = element_text(size = 9), axis.text.y = element_text(size = 9), strip.text = element_text(size = 12)) -> p
+# 
+# if (synchrony == T){
+# p +
+#   stat_summary(
+#     mapping = aes(y =sync_resc, colour = "Synchrony"),
+#     fun = mean,
+#     group = "cluster",
+#     geom = "line",
+#     linewidth = 1,
+#     show.legend = T
+#   ) -> p}
+# 
+# if (delta_f0 == T){
+# p +
+#   stat_summary(
+#     mapping = aes(y =delta, colour = "Delta f0"),
+#     fun = mean,
+#     group = "cluster",
+#     geom = "line",
+#     linewidth = 1,
+#     show.legend = T
+#   ) -> p}
+# 
+# p
+# ggsave(p, file=paste0("plots/ClusterLinePlot_",k,"Clusters.pdf"),device=cairo_pdf)
+# 
+# # violin plot
+# ggplot(df_plot, aes(x = syll_nr)) + 
+#   scale_colour_manual(name="Measure:", values=clrs) +
+#   scale_y_continuous(
+#     name = names(clrs[1]),
+#     sec.axis = sec_axis(~((. -a.min) * b.diff / a.diff) + b.min, name=names(clrs[2]))
+#   ) +
+#   theme(legend.position="bottom")  +
+#   facet_wrap(~ cluster,nrow=2,labeller = as_labeller(wrap_labs)) +
+#   ylab("") +
+#   scale_x_discrete(name ="Syllable", labels=c("Can","I","ask","you a","ques-","tion"))+
+#     theme(plot.title = element_blank(), plot.background = element_rect(fill = "white"), panel.grid.major.x = element_line(), panel.grid.major.y = element_blank(), axis.title.x = element_blank(), axis.title.y = element_text(size = 12), axis.text.x = element_text(size = 9), axis.text.y = element_text(size = 9), strip.text = element_text(size = 12)) -> vp
+# 
+# if (delta_f0 ==T){
+# vp +   geom_violin(
+#   mapping = aes(y =delta, colour = "Delta f0"),
+#   fill = "transparent"
+# ) -> vp}
+# 
+# if(synchrony ==T){
+# vp +  geom_violin(
+#     mapping = aes(y =sync_resc, colour = "Synchrony"),
+#     fill = "transparent"
+# ) -> vp}
+# 
+# vp
+# ggsave(vp, file=paste0("plots/ClusterViolinPlot_",k,"Clusters.pdf"),device=cairo_pdf)
+# 
+# ```
+# /////////////// OLD plots /////////////////
+
+---
 
 ## Select prototypes per cluster
 
@@ -211,18 +291,23 @@ ggsave(vp, file=paste0("plots/ClusterViolinPlot_",k,"Clusters.pdf"),device=cairo
 # get prototypes per cluster based on the minimum deviation from the cluster mean (iterated over all syllables)
 0 -> df$devDlt
 0 -> df$devSnc
+0 -> df$devMass
 
 for (r in 1:nrow(df)){
   mean(unlist(abs(df[r,2:7]-colMeans(df[,2:7][df$cluster==df$cluster[r]])))) -> df$devDlt[r]
   mean(unlist(abs(df[r,8:13]-colMeans(df[,8:13][df$cluster==df$cluster[r]])))) -> df$devSnc[r]
+  mean(unlist(abs(df[r,8:13]-colMeans(df[,14:19][df$cluster==df$cluster[r]])))) -> df$devMass[r]
 }
 rescale(df$devDlt,c(0,1)) -> df$devDlt
 rescale(df$devSnc,c(0,1)) -> df$devSnc
+rescale(df$devMass,c(0,1)) -> df$devMass
 
 for (c in 1:max(df$cluster)){
-  print(paste0(c,": ",df$file[df$cluster==c][which.min(df$devDlt[df$cluster==c]+df$devSnc[df$cluster==c])]))
+  print(paste0(c,": ",df$file[df$cluster==c][which.min(df$devDlt[df$cluster==c]+df$devSnc[df$cluster==c]+df$devMass[df$cluster==c])]))
 }
 ```
+
+## OLD clusters based on sync+delta
 
 k = 3
 [1] "1: cut-KGO_20210126_230000_ABC7_News_Getting_Answers"
@@ -271,14 +356,17 @@ write.csv(clusterAnalysis_df, "data_tables/clusterAnalysis_df.csv", row.names=FA
 c() -> df.var
 wDlt <- c()
 wSnc <- c()
+wMass <- c()
 
 bDlt <- c()
 bSnc <- c()
+bMass <- c()
 
 for (r in 2:15){
   cutree(hc,k = r) -> df$cluster
   wcDlt <- c()
   wcSnc <- c()
+  wcMass <- c()
   for (c in 1:r){
     c() -> colsd_wDlt
       for (m in 2:7) {
@@ -290,26 +378,37 @@ for (r in 2:15){
         append(colsd_wSnc,sd(unlist(df[df$cluster == c,m,with=FALSE]))) -> colsd_wSnc
       }
     append(wcSnc, mean(colsd_wSnc,na.rm = T)) -> wcSnc
+    c() -> colsd_wMass
+      for (m in 14:19) {
+        append(colsd_wMass,sd(unlist(df[df$cluster == c,m,with=FALSE]))) -> colsd_wMass
+      }
+      append(wcMass, mean(colsd_wMass,na.rm = T)) -> wcMass
   }
   append(wDlt,mean(c(wcDlt,wcDlt),na.rm = T)) -> wDlt
   append(wSnc,mean(c(wcSnc,wcSnc),na.rm = T)) -> wSnc
+  append(wMass,mean(c(wcMass,wcMass),na.rm = T)) -> wMass
   append(bDlt,abs(max(wcDlt,na.rm = T))-abs(min(wcDlt,na.rm = T))) -> bDlt
   append(bSnc,abs(max(wcSnc,na.rm = T))-abs(min(wcSnc,na.rm = T))) -> bSnc
+  append(bMass,abs(max(wcMass,na.rm = T))-abs(min(wcMass,na.rm = T))) -> bMass
 }
 
-as.data.frame(cbind(2:15,wDlt,wSnc,bDlt,bSnc)) -> df.var
+as.data.frame(cbind(2:15,wDlt,wSnc,wMass,bDlt,bSnc,bMass)) -> df.var
 
 # rescale
 rescale(df.var$wDlt,c(0,1)) -> df.var$wDlt
 rescale(df.var$wSnc,c(0,1)) -> df.var$wSnc
+rescale(df.var$wMass,c(0,1)) -> df.var$wMass
 rescale(df.var$bDlt,c(0,1)) -> df.var$bDlt
 rescale(df.var$bSnc,c(0,1)) -> df.var$bSnc
+rescale(df.var$bMass,c(0,1)) -> df.var$bMass
 
 eval <- ggplot(df.var, aes(x=V1)) +
-  geom_line(aes(y=wDlt),colour="red") +
+  geom_line(aes(y=wDlt),colour="green") +
   geom_line(aes(y=wSnc),colour="blue") +
-  geom_line(aes(y=bDlt),colour="red", linetype=2) +
+  geom_line(aes(y=wMass),colour="red") +
+  geom_line(aes(y=bDlt),colour="green", linetype=2) +
   geom_line(aes(y=bSnc),colour="blue", linetype=2) +
+  geom_line(aes(y=bMass),colour="red", linetype=2) +
   annotate("text",13,0.5,label = paste0("--- between var","\n","\U2015 within var")) +
   ylab("scaled variance") +
   xlab("N clusters") +
